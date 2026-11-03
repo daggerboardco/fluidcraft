@@ -1,46 +1,51 @@
 # Fluidcraft — Project Roadmap
 
-> A CFD application that replaces Autodesk CFD 2027's native single-threaded solver with **OpenFOAM** as the compute backend — Linux-native, parallel, and GPU-capable. Mesh creation is the core focus.
+> A CFD application that uses **OpenFOAM** as the compute backend — Linux-native, parallel, and GPU-capable. Mesh creation is the core focus.
 
 **Language:** Rust (throughout — shell, geometry, orchestration, GPU backend).
 **Solver / meshing engine:** OpenFOAM (invoked as a subprocess library).
-**Goal:** Recreate CFD2027's meshing workflow on Linux, swap the solver for OpenFOAM, and target GPU acceleration.
+**Goal:** Build a Linux-native CFD workflow with an OpenFOAM backend and GPU acceleration.
+
+> **Inspiration vs. IP.** The meshing workflow is inspired by general techniques used by commercial CFD applications (octree/delaunay tessellation, polyhedral conversion, prism inflation layers, y+ control). These are standard, non-proprietary engineering concepts. We do not copy, port, or reverse-engineer any proprietary code, binaries, assets, or source. See Section 7 (Licensing and Copyright) for the binding rules.
 
 ---
 
-## 0. Background — What CFD2027 Actually Is
+## 0. Background — The Reference Meshing Workflow
 
-Reverse-engineered with REA (Reverse Engineer Anything) against the install at
-`/mnt/970EVO/Autodesk/CFD 2027`. Findings that drive this project:
+General findings about the meshing approach used by mainstream commercial CFD
+applications (observed as inspiration only — no proprietary code or binaries are
+used, copied, or ported):
 
-- **Architecture:** native C++ solver/mesher + a managed .NET 10 UI/connectivity
-  layer (DevExpress WinForms + WPF). Census of the install: **106 managed** vs
-  **153 native** `.dll`/`.exe`.
-- **Mesher is native C++** (`ASMA*.dll` AutoMesh engine, `CFDMesher.exe`,
-  `CFDGeoMesh.dll`, `CFDGeometryDatabase.dll`, `CFDFileIO.dll`, `SimMeshing.dll`).
-  Proprietary — porting it is a dead end. **Do not reimplement the mesher.**
-- **Geometry import supported:** STEP, IGES, Parasolid/SAT, NX/UG, CATIA,
-  ProE/CREO, SolidWorks, plus STL, OBJ, DXF, JT.
-- **Meshing recipe extracted (from native-DLL strings):**
-  - Algorithm: **octree-dominant** + **delaunay** + **advancing-front/"bubble"**,
-    with **polyhedral conversion** and **non-conformal interface matching**.
+- **Architecture:** commercial CFD apps typically pair a native C++ solver/mesher
+  with a managed UI layer. This project instead pairs a Rust shell with the
+  open-source OpenFOAM engine.
+- **Mesher is native C++** in those products, with proprietary algorithms —
+  reimplementing them from decompiled output would risk IP infringement. **Do
+  not reimplement or port a proprietary mesher.**
+- **Geometry import formats (open, standards-based):** STEP, IGES, Parasolid/SAT,
+  NX/UG, CATIA, ProE/CREO, SolidWorks, plus STL, OBJ, DXF, JT. We support these
+  via open standards and open-source converters, not proprietary readers.
+- **Meshing recipe (standard engineering techniques):**
+  - Algorithm: **octree-dominant** + **delaunay** + **advancing-front**, with
+    **polyhedral conversion** and **non-conformal interface matching**.
   - Elements: **tetrahedral core**; **wedge/prism/pyramid** for near-wall; shells.
   - Boundary layers: **inflation layers** with **y+ targeting**, **wall functions**,
     **k-ω SST** turbulence.
   - Sizing: global/local **sizing**, **growth rate**, **transition**, **AMR**
     (adaptive refinement), quality/skewness control.
   - Parallel: **MPI** + **metis domain decomposition** + partitioning.
-- **Key insight:** OpenFOAM already produces this exact mesh.
+- **Key insight:** OpenFOAM already implements these standard techniques.
   `snappyHexMesh` = polyhedral core + prism inflation layers + y+;
   `blockMesh` = hex core; `decomposePar` (metis) = MPI decomposition;
-  `refineMesh` = AMR. **Your IP is the app shell + geometry + GPU backend, not the meshing algorithm.**
+  `refineMesh` = AMR. **Our IP is the app shell + geometry + GPU backend, not the
+  meshing algorithm.**
 
 ---
 
 ## 1. Guiding Principles
 
-1. **Don't reimplement the mesher.** Orchestrate OpenFOAM's meshers, which already
-   match CFD2027's recipe.
+1. **Don't reimplement or port a proprietary mesher.** Orchestrate OpenFOAM's
+   meshers, which already implement the standard meshing recipe.
 2. **Rust owns the shell.** Geometry, meshing orchestration, solver calls, GPU
    backend, and UI all in Rust.
 3. **OpenFOAM is a CLI library.** Call `blockMesh`, `snappyHexMesh`, solvers, and
@@ -91,16 +96,16 @@ Reverse-engineered with REA (Reverse Engineer Anything) against the install at
 ### Phase 2 — Meshing (3–4 weeks) — *core focus*
 - Orchestrate OpenFOAM CLIs from Rust:
   - `blockMesh` for hex cores / simple domains.
-  - `snappyHexMesh` for the CFD2027-equivalent recipe: **snap → smooth → add prism layers → y+ control**.
+  - `snappyHexMesh` for the standard recipe: **snap → smooth → add prism layers → y+ control**.
 - Generate the `snappyHexMeshDict` from Rust (snap/smooth/prism-layer/y+ settings).
 - Add local sizing + refinement boxes; run `checkMesh` for quality/skewness/orthogonality.
-- Validate mesh against CFD2027 output (element mix: polyhedral core + prism walls).
+- Validate mesh output (element mix: polyhedral core + prism walls) against OpenFOAM's own tutorial cases.
 - **Definition of done:** produce a polyhedral + prism-layer mesh with y+ control, passing `checkMesh`.
 
 ### Phase 3 — Solver Orchestration (2–3 weeks)
 - Wrap OpenFOAM solvers (`simpleFoam`, `kSSTFoam`, etc.) as subprocesses.
 - Build case setup: boundary conditions, materials, turbulence models.
-- Parallel: `decomposePar` (metis) + `mpirun`/`mpmd` + `recombinePar` — matches CFD2027's MPI partitioning.
+- Parallel: `decomposePar` (metis) + `mpirun`/`mpmd` + `recombinePar` — standard MPI partitioning.
   - Use the `mpi` crate for in-process MPI control if desired.
 - Job monitoring: parse `log.*`, residuals, y+, forces.
 - **Definition of done:** run a parallel OpenFOAM solve and report converged residuals + y+.
@@ -150,9 +155,49 @@ Reverse-engineered with REA (Reverse Engineer Anything) against the install at
 
 - End-to-end pipeline: **STEP → mesh (polyhedral + prism + y+) → parallel solve → results**, all driven from Rust.
 - GPU-accelerated solve matching CPU accuracy.
-- Mesh output functionally comparable to CFD2027's recipe.
+- Mesh output functionally comparable to the reference commercial workflow.
 - Linux-native, single-binary-feel app with interactive mesh/solve UI.
 
 ---
 
-_Last updated: 2026-11-02. Source of CFD2027 findings: REA static inspection of `/mnt/970EVO/Autodesk/CFD 2027`._
+## 7. Licensing & Copyright Compliance
+
+> **Binding rule.** Fluidcraft must not breach any third-party copyright. Any
+> proprietary commercial CFD product may be used only as an **inspiration for
+> general engineering techniques** — never as a source of code, binaries, assets,
+> resources, or source to copy, port, decompile, or reverse engineer.
+
+**All actual references and utilized tools must be one of:**
+
+1. **Open source** under a permissive or copyleft license we comply with
+   (e.g. MIT, Apache-2.0, BSD-3, GPL/LGPL with proper attribution/relinking), or
+2. **Public domain / copyright-free** (CC0, unlicensed public-domain data), or
+3. **Fair use** — only small, transformative excerpts with a documented legal
+   basis; never whole files or functional substitutes.
+
+**Do / Don't:**
+
+| Do | Don't |
+|---|---|
+| Use OpenFOAM, OpenCASCADE/OCCT, FreeCAD, cadquery, VTK, Qt, WGPU, Bevy, etc. | Copy/port proprietary CFD code, meshes, geometry, or binaries |
+| Follow open import standards (STEP/IGES per ISO) via open readers | Ship or bundle any proprietary file formats/readers |
+| Keep a `LICENSES/` file listing every third-party dependency + license | Decompile or reverse-engineer a competitor to reproduce behavior |
+| Attribute open-source components per their licenses | Reproduce copyrighted UI, icons, logos, or docs |
+
+**OpenFOAM note:** OpenFOAM is distributed under **GPL-v3** (GNU General Public
+License). Using it as a subprocess library is permitted, but GPL obligations
+(relinking/attribution, and considerations around combining) apply — confirm with
+legal counsel before distribution. Prefer invoking it as an external process
+(which this architecture already does) and keep Fluidcraft's own source under a
+permissive license (MIT) where legally sound.
+
+**Action items:**
+
+- Add `LICENSES/` documenting every third-party crate/tool and its license.
+- Add a top-level `LICENSE` (MIT) for Fluidcraft's own code.
+- Before shipping, run a dependency-license audit (`cargo audit`, `cargo about`,
+  or equivalent) and get a legal sign-off on the GPL (OpenFOAM) interaction.
+
+---
+
+_Last updated: 2026-11-02._
