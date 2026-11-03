@@ -1,1 +1,18 @@
+# Rust build artifacts
 /target
+**/target
+
+# Backup files
+*.bak
+*.orig
+
+# Editor/OS cruft
+.DS_Store
+.idea/
+.vscode/
+*.swp
+
+# OpenFOAM case scratch (don't commit generated cases)
+*/0/
+*/constant/polyMesh/
+*/system/controlDict.bak

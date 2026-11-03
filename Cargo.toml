@@ -2,9 +2,14 @@
 name = "fluidcraft"
 version = "0.1.0"
 edition = "2021"
+rust-version = "1.74"
 description = "A CFD application with an OpenFOAM backend — Linux-native, parallel, GPU-capable."
 license = "MIT"
-readme = "roadmap.md"
+readme = "README.md"
+keywords = ["cfd", "openfoam", "rust", "hpc", "simulation"]
+categories = ["command-line-utilities", "science"]
+repository = "https://github.com/fluidcraft/fluidcraft"
+authors = ["The Fluidcraft Authors"]
 default-run = "fluidcraft"
 
 [[bin]]
