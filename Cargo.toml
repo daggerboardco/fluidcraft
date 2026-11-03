@@ -1,0 +1,30 @@
+[package]
+name = "fluidcraft"
+version = "0.1.0"
+edition = "2021"
+description = "A CFD application with an OpenFOAM backend — Linux-native, parallel, GPU-capable."
+license = "MIT"
+readme = "roadmap.md"
+default-run = "fluidcraft"
+
+[[bin]]
+name = "fluidcraft"
+path = "src/main.rs"
+
+[dependencies]
+# Phase 0 stack (buildable baseline); GPU/CAD/mpi crates added in later phases.
+tokio = { version = "1", features = ["full"] }
+clap = { version = "4", features = ["derive"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+anyhow = "1"
+thiserror = "1"
+
+[profile.dev]
+opt-level = 0
+debug = true
+
+[profile.release]
+opt-level = 3
+lto = "thin"
+codegen-units = 1
