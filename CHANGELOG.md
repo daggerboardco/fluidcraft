@@ -14,3 +14,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - OpenFOAM case scaffolding via `fluidcraft new`.
 - MIT `LICENSE` and dependency-license manifest (`LICENSES/DEPENDENCIES.md`).
 - CI workflow (build + clippy on Linux).
+- Overwrite guard for `fluidcraft new` (`--overwrite` flag; refuses to clobber
+  an existing case).
+- Absolute path resolution for OpenFOAM case directories.
+- `snappyHexMesh` added to the `fluidcraft mesh` pipeline
+  (`blockMesh` → `snappyHexMesh`).
+- Admin-bypass merge policy documented in CONTRIBUTING.md.

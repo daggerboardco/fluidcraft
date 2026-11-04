@@ -61,9 +61,6 @@ Merges to `master` are gated by branch protection:
 - **Code-owner reviews are required.** Every path is owned in
   [`.github/CODEOWNERS`](.github/CODEOWNERS), so a code owner must approve any
   change to it. `master` is protected and direct pushes are disabled.
-- **Code-owner reviews are required.** Every path is owned in
-  [`.github/CODEOWNERS`](.github/CODEOWNERS), so a code owner must approve any
-  change to it. `master` is protected and direct pushes are disabled.
 - **Contributors are gated; admins bypass.** `enforce_admins` is **off**, so an
   admin (the repo owner) can merge directly. Non-admin contributors still need
   a code-owner approval before their PR can merge to `master`.
