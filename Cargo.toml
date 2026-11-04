@@ -8,7 +8,7 @@ license = "MIT"
 readme = "README.md"
 keywords = ["cfd", "openfoam", "rust", "hpc", "simulation"]
 categories = ["command-line-utilities", "science"]
-repository = "https://github.com/fluidcraft/fluidcraft"
+repository = "https://github.com/daggerboardco/fluidcraft"
 authors = ["The Fluidcraft Authors"]
 default-run = "fluidcraft"
 
