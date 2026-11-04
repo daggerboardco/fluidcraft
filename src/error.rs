@@ -23,6 +23,9 @@ pub enum FluidcraftError {
     #[error("meshing failed: {0}")]
     Meshing(String),
 
+    #[error("case already exists at {path}; use --overwrite to replace it")]
+    CaseExists { path: String },
+
     #[error("io error for {path}: {source}")]
     Io {
         path: String,

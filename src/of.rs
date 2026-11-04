@@ -44,6 +44,21 @@ pub fn openfoam_version() -> Result<String> {
     Ok("blockMesh available".to_string())
 }
 
+/// Resolve a case path to an absolute path so that OpenFOAM tool invocations
+/// are unambiguous regardless of the process working directory. Using an
+/// absolute path for both the working directory and the `-case` argument keeps
+/// them consistent (a relative `-case` combined with `chdir` would otherwise
+/// resolve to the wrong location).
+fn resolve_case(case: &Path) -> PathBuf {
+    if case.is_absolute() {
+        case.to_path_buf()
+    } else {
+        std::env::current_dir()
+            .map(|dir| dir.join(case))
+            .unwrap_or_else(|_| case.to_path_buf())
+    }
+}
+
 /// Run a subprocess, capturing combined stdout/stderr.
 async fn run_tool(
     program: &str,
@@ -80,15 +95,36 @@ async fn run_tool(
 ///   system/     blockMeshDict, snappyHexMeshDict, controlDict, decomposeDict
 ///   constant/   polyMesh, transportProperties, thermophysicalProperties
 /// ```
-pub async fn create_case(case: &Path) -> Result<()> {
-    for sub in ["0", "system", "constant"] {
-        tokio::fs::create_dir_all(case.join(sub))
-            .await
-            .with_context(|| format!("creating {}", case.join(sub).display()))?;
+pub async fn create_case(case: &Path, overwrite: bool) -> Result<()> {
+    let resolved = resolve_case(case);
+
+    if !overwrite && case_exists(&resolved).await? {
+        return Err(FluidcraftError::CaseExists {
+            path: resolved.to_string_lossy().into_owned(),
+        }
+        .into());
     }
 
-    write_files(case).await?;
+    for sub in ["0", "system", "constant"] {
+        tokio::fs::create_dir_all(resolved.join(sub))
+            .await
+            .with_context(|| format!("creating {}", resolved.join(sub).display()))?;
+    }
+
+    write_files(&resolved).await?;
     Ok(())
+}
+
+/// Returns true when the case directory already contains at least one entry,
+/// i.e. it is an existing case rather than a fresh empty target.
+async fn case_exists(case: &Path) -> Result<bool> {
+    let mut reader = match tokio::fs::read_dir(case).await {
+        Ok(reader) => reader,
+        // A missing target is a fresh case, not an existing one.
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(false),
+        Err(e) => return Err(e).with_context(|| format!("reading {}", case.display())),
+    };
+    Ok(reader.next_entry().await?.is_some())
 }
 
 /// Generate the default case files.
@@ -96,45 +132,37 @@ async fn write_files(case: &Path) -> Result<()> {
     let system = case.join("system");
     let constant = case.join("constant");
 
-    tokio::fs::write(
-        system.join("blockMeshDict"),
-        BLOCK_MESH_DICT,
-    )
-    .await?;
-    tokio::fs::write(
-        system.join("snappyHexMeshDict"),
-        SNAPPYHEXMESH_DICT,
-    )
-    .await?;
+    tokio::fs::write(system.join("blockMeshDict"), BLOCK_MESH_DICT).await?;
+    tokio::fs::write(system.join("snappyHexMeshDict"), SNAPPYHEXMESH_DICT).await?;
     tokio::fs::write(system.join("controlDict"), CONTROL_DICT).await?;
-    tokio::fs::write(
-        system.join("decomposeDict"),
-        DECOMPOSE_DICT,
-    )
-    .await?;
-    tokio::fs::write(
-        constant.join("transportProperties"),
-        TRANSPORT_PROPERTIES,
-    )
-    .await?;
+    tokio::fs::write(system.join("decomposeDict"), DECOMPOSE_DICT).await?;
+    tokio::fs::write(constant.join("transportProperties"), TRANSPORT_PROPERTIES).await?;
 
     Ok(())
 }
 
-/// Run `blockMesh` for the base hex mesh.
+/// Run `blockMesh` for the base hex mesh, then `snappyHexMesh` for
+/// polyhedral snapping and prism inflation layers — the advertised pipeline.
 pub async fn mesh(case: &Path) -> Result<()> {
-    run_tool("blockMesh", &["-case", &case.to_string_lossy()], Some(case))
-        .await
-        .context("blockMesh failed")?;
+    let case = resolve_case(case);
+    run_tool(
+        "blockMesh",
+        &["-case", &case.to_string_lossy()],
+        Some(&case),
+    )
+    .await
+    .context("blockMesh failed")?;
+    snappy_hex_mesh(&case).await?;
     Ok(())
 }
 
 /// Run `snappyHexMesh` for polyhedral snapping + prism layers.
 pub async fn snappy_hex_mesh(case: &Path) -> Result<()> {
+    let case = resolve_case(case);
     run_tool(
         "snappyHexMesh",
         &["-case", &case.to_string_lossy(), "-overwrite"],
-        Some(case),
+        Some(&case),
     )
     .await
     .context("snappyHexMesh failed")?;
@@ -143,10 +171,16 @@ pub async fn snappy_hex_mesh(case: &Path) -> Result<()> {
 
 /// Run `decomposePar` for parallel domain decomposition.
 pub async fn decompose(case: &Path, num_domains: usize) -> Result<()> {
+    let case = resolve_case(case);
     run_tool(
         "decomposePar",
-        &["-case", &case.to_string_lossy(), "-n", &num_domains.to_string()],
-        Some(case),
+        &[
+            "-case",
+            &case.to_string_lossy(),
+            "-n",
+            &num_domains.to_string(),
+        ],
+        Some(&case),
     )
     .await
     .context("decomposePar failed")?;
@@ -155,13 +189,10 @@ pub async fn decompose(case: &Path, num_domains: usize) -> Result<()> {
 
 /// Run a solver over the case directory.
 pub async fn solve(case: &Path, solver: &str) -> Result<()> {
-    run_tool(
-        solver,
-        &["-case", &case.to_string_lossy()],
-        Some(case),
-    )
-    .await
-    .with_context(|| format!("{solver} failed"))?;
+    let case = resolve_case(case);
+    run_tool(solver, &["-case", &case.to_string_lossy()], Some(&case))
+        .await
+        .with_context(|| format!("{solver} failed"))?;
     Ok(())
 }
 
@@ -177,6 +208,18 @@ FoamFile {
 
 deltaX    1e-3;
 scale     1.0;
+
+vertices
+(
+    (0 0 0)
+    (1 0 0)
+    (1 1 0)
+    (0 1 0)
+    (0 0 1)
+    (1 0 1)
+    (1 1 1)
+    (0 1 1)
+);
 
 blocks
 (
@@ -280,3 +323,86 @@ transportModel  Newtonian;
 mu              1.8e-05;
 rho             1.225;
 "#;
+
+// --- Tests ---------------------------------------------------------------
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::Path;
+
+    #[test]
+    fn resolve_case_returns_absolute_path() {
+        // A relative input is resolved against the current directory into an
+        // absolute path, so `-case` is unambiguous regardless of cwd.
+        let resolved = resolve_case(Path::new("my-case"));
+        assert!(
+            resolved.is_absolute(),
+            "expected absolute path, got {}",
+            resolved.display()
+        );
+    }
+
+    #[test]
+    fn resolve_case_passthrough_for_absolute() {
+        let abs = std::env::current_dir().unwrap().join("other");
+        assert_eq!(resolve_case(&abs), abs);
+    }
+
+    #[tokio::test]
+    async fn create_case_rejects_existing_non_empty_case() {
+        let dir = std::env::temp_dir().join(format!("oc-test-exist-{}", std::process::id()));
+        let _ = tokio::fs::remove_dir_all(&dir).await;
+        tokio::fs::create_dir_all(&dir).await.unwrap();
+        // Seed an existing file so the case is non-empty.
+        tokio::fs::create_dir_all(dir.join("system")).await.unwrap();
+        tokio::fs::write(dir.join("system").join("seed.txt"), b"keep")
+            .await
+            .unwrap();
+
+        let err = create_case(&dir, false).await;
+        assert!(err.is_err(), "expected rejection of existing case");
+        if let Err(e) = err {
+            let msg = e.to_string();
+            assert!(
+                msg.contains("--overwrite"),
+                "expected overwrite hint, got: {msg}"
+            );
+        }
+
+        let _ = tokio::fs::remove_dir_all(&dir).await;
+    }
+
+    #[tokio::test]
+    async fn create_case_overwrites_when_flagged() {
+        let dir = std::env::temp_dir().join(format!("oc-test-over-{}", std::process::id()));
+        let _ = tokio::fs::remove_dir_all(&dir).await;
+        tokio::fs::create_dir_all(&dir).await.unwrap();
+        tokio::fs::create_dir_all(dir.join("system")).await.unwrap();
+        tokio::fs::write(dir.join("system").join("seed.txt"), b"keep")
+            .await
+            .unwrap();
+
+        let result = create_case(&dir, true).await;
+        assert!(
+            result.is_ok(),
+            "expected success with overwrite: {result:?}"
+        );
+
+        let _ = tokio::fs::remove_dir_all(&dir).await;
+    }
+
+    #[tokio::test]
+    async fn create_case_in_empty_dir_succeeds() {
+        let dir = std::env::temp_dir().join(format!("oc-test-empty-{}", std::process::id()));
+        let _ = tokio::fs::remove_dir_all(&dir).await;
+        // Create an existing but empty target directory.
+        tokio::fs::create_dir_all(&dir).await.unwrap();
+
+        let result = create_case(&dir, false).await;
+        assert!(result.is_ok(), "expected success in empty dir: {result:?}");
+        assert!(dir.join("system").join("blockMeshDict").exists());
+
+        let _ = tokio::fs::remove_dir_all(&dir).await;
+    }
+}

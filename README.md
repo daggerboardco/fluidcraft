@@ -68,6 +68,7 @@ The binary is produced at `target/debug/fluidcraft` (debug) or
 fluidcraft check
 
 # Generate an OpenFOAM case directory
+# Refuses to overwrite an existing case; pass --overwrite to replace it
 fluidcraft new /path/to/case
 
 # Run the meshing pipeline (blockMesh + snappyHexMesh)
