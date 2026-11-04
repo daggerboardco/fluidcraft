@@ -1,0 +1,18 @@
+# Dependabot keeps Fluidcraft's crate dependencies current.
+# It opens pull requests that run through the normal CI gate
+# (build + lint) and require a code-owner review before merging to master.
+# Auto-merge is intentionally OFF: every update is reviewed, not auto-merged.
+version: 2
+
+updates:
+  # Rust crates (Cargo.toml / Cargo.lock)
+  - package-ecosystem: "cargo"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    # Security advisories get their own PRs, opened daily.
+    open-pull-requests-limit: 10
+    labels:
+      - "dependencies"
+    reviewers:
+      - "PapaEcho13"
