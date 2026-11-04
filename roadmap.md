@@ -6,7 +6,7 @@
 **Solver / meshing engine:** OpenFOAM (invoked as a subprocess library).
 **Goal:** Build a Linux-native CFD workflow with an OpenFOAM backend and GPU acceleration.
 
-> **Inspiration vs. IP.** The meshing workflow is inspired by general techniques used by commercial CFD applications (octree/delaunay tessellation, polyhedral conversion, prism inflation layers, y+ control). These are standard, non-proprietary engineering concepts. We do not copy, port, or reverse-engineer any proprietary code, binaries, assets, or source. See Section 7 (Licensing and Copyright) for the binding rules.
+> **Inspiration vs. IP.** The meshing workflow is inspired by general techniques used by commercial CFD applications (octree/delaunay tessellation, polyhedral conversion, prism inflation layers, y+ control). These are standard, non-proprietary engineering concepts. See Section 7 (Licensing and Copyright) for the binding rules.
 
 ---
 

@@ -10,8 +10,7 @@ mesh creation as the core focus.
 > **Inspiration vs. IP.** The meshing workflow is inspired by general techniques
 > used by mainstream commercial CFD applications (octree/delaunay tessellation,
 > polyhedral conversion, prism inflation layers, y+ control). These are standard,
-> non-proprietary engineering concepts. Fluidcraft does **not** copy, port, or
-> reverse-engineer any proprietary code, binaries, or assets. All utilized tools
+> non-proprietary engineering concepts. All utilized tools
 > are open source, public domain, or used under fair use. See
 > [`roadmap.md#7-licensing--copyright-compliance`](roadmap.md#7-licensing--copyright-compliance)
 > for the binding rules.
