@@ -61,9 +61,13 @@ Merges to `master` are gated by branch protection:
 - **Code-owner reviews are required.** Every path is owned in
   [`.github/CODEOWNERS`](.github/CODEOWNERS), so a code owner must approve any
   change to it. `master` is protected and direct pushes are disabled.
+- **Required status checks.** CI (`build` + `lint`) must pass before a merge.
+  This gate applies to non-admin contributors; admins bypass it (with GitHub's
+  standard warning) — see below.
 - **Contributors are gated; admins bypass.** `enforce_admins` is **off**, so an
-  admin (the repo owner) can merge directly. Non-admin contributors still need
-  a code-owner approval before their PR can merge to `master`.
+  admin (the repo owner) can merge directly, including with failing `build`/`lint`
+  (GitHub shows a warning). Non-admin contributors still need both a code-owner
+  approval *and* passing CI before their PR can merge to `master`.
 
 ### Sole contributor note
 
