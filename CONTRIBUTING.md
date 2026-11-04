@@ -61,19 +61,22 @@ Merges to `master` are gated by branch protection:
 - **Code-owner reviews are required.** Every path is owned in
   [`.github/CODEOWNERS`](.github/CODEOWNERS), so a code owner must approve any
   change to it. `master` is protected and direct pushes are disabled.
-- **Admins are not exempt** (`enforce_admins` is on).
+- **Code-owner reviews are required.** Every path is owned in
+  [`.github/CODEOWNERS`](.github/CODEOWNERS), so a code owner must approve any
+  change to it. `master` is protected and direct pushes are disabled.
+- **Contributors are gated; admins bypass.** `enforce_admins` is **off**, so an
+  admin (the repo owner) can merge directly. Non-admin contributors still need
+  a code-owner approval before their PR can merge to `master`.
 
 ### Sole contributor note
 
-`@PapaEcho13` is currently the only code owner and the only contributor. GitHub
-does not count an author's own approval as a code-owner review, so as the sole
-contributor you cannot merge your own PRs until one of these is true:
+`@PapaEcho13` is currently the only code owner and the only contributor. Because
+they are the repo **admin** and `enforce_admins` is off, they can merge their own
+PRs to `master` directly (admin bypass). The code-owner gate still protects the
+branch against non-admin contributors: anyone added later as a collaborator will
+need a code-owner approval before merging.
 
-- a second person is added as a collaborator/code owner and approves the PR, or
-- code-owner reviews are relaxed (set `require_code_owner_reviews` off) if
-  self-approval is acceptable for now.
-
-To add a reviewer: invite them to the org/repo, then add them to
+To add a reviewer/collaborator: invite them to the org/repo, then add them to
 [`.github/CODEOWNERS`](.github/CODEOWNERS).
 
 ## Code of conduct
