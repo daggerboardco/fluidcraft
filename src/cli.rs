@@ -22,6 +22,9 @@ pub enum Command {
     New {
         /// Output path for the new OpenFOAM case.
         path: std::path::PathBuf,
+        /// Overwrite an existing case directory (refused by default).
+        #[arg(long)]
+        overwrite: bool,
     },
 
     /// Run the meshing pipeline (blockMesh + snappyHexMesh).
@@ -43,7 +46,7 @@ pub enum Command {
 pub async fn run(args: Args) -> Result<()> {
     match args.command {
         Command::Check => check().await,
-        Command::New { path } => new(path).await,
+        Command::New { path, overwrite } => new(path, overwrite).await,
         Command::Mesh { path } => mesh(path).await,
         Command::Solve { path, solver } => solve(path, solver).await,
     }
@@ -53,7 +56,10 @@ pub async fn run(args: Args) -> Result<()> {
 async fn check() -> Result<()> {
     let version = of::openfoam_version().map_err(|e| {
         let msg = e.to_string();
-        let missing = matches!(e.downcast::<FluidcraftError>(), Ok(FluidcraftError::OpenfoamMissing));
+        let missing = matches!(
+            e.downcast::<FluidcraftError>(),
+            Ok(FluidcraftError::OpenfoamMissing)
+        );
         anyhow::anyhow!(
             "{}",
             if missing {
@@ -67,8 +73,8 @@ async fn check() -> Result<()> {
     Ok(())
 }
 
-async fn new(path: std::path::PathBuf) -> Result<()> {
-    of::create_case(&path).await?;
+async fn new(path: std::path::PathBuf, overwrite: bool) -> Result<()> {
+    of::create_case(&path, overwrite).await?;
     println!("Created OpenFOAM case at {}", path.display());
     Ok(())
 }

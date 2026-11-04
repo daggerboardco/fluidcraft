@@ -53,6 +53,32 @@ cargo run -- solve ./scratch-case --solver simpleFoam
 3. Confirm the local verification steps above pass.
 4. Keep the PR scoped; split larger efforts into focused PRs.
 
+## Merge approval
+
+Merges to `master` are gated by branch protection:
+
+- **Pull-request reviews are required** (at least one approval).
+- **Code-owner reviews are required.** Every path is owned in
+  [`.github/CODEOWNERS`](.github/CODEOWNERS), so a code owner must approve any
+  change to it. `master` is protected and direct pushes are disabled.
+- **Code-owner reviews are required.** Every path is owned in
+  [`.github/CODEOWNERS`](.github/CODEOWNERS), so a code owner must approve any
+  change to it. `master` is protected and direct pushes are disabled.
+- **Contributors are gated; admins bypass.** `enforce_admins` is **off**, so an
+  admin (the repo owner) can merge directly. Non-admin contributors still need
+  a code-owner approval before their PR can merge to `master`.
+
+### Sole contributor note
+
+`@PapaEcho13` is currently the only code owner and the only contributor. Because
+they are the repo **admin** and `enforce_admins` is off, they can merge their own
+PRs to `master` directly (admin bypass). The code-owner gate still protects the
+branch against non-admin contributors: anyone added later as a collaborator will
+need a code-owner approval before merging.
+
+To add a reviewer/collaborator: invite them to the org/repo, then add them to
+[`.github/CODEOWNERS`](.github/CODEOWNERS).
+
 ## Code of conduct
 
 By participating, you are expected to uphold our [Code of Conduct](CODE_OF_CONDUCT.md).
