@@ -1,0 +1,12 @@
+# Code Owners — required reviewers for merges
+#
+# Every merge to the default branch requires approval from a selected
+# (verified) contributor listed here. Add new verified contributors as they
+# are added so merges stay review-gated.
+#
+# Format: "<glob path> <reviewer>"
+#
+# * @PapaEcho13
+
+# All paths require approval from the verified contributors below.
+* @PapaEcho13
