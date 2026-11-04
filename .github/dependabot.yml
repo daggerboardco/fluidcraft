@@ -1,4 +1,4 @@
-# Dependabot keeps Fluidcraft's crate dependencies current.
+# Dependabot keeps Fluidcraft's dependencies current.
 # It opens pull requests that run through the normal CI gate
 # (build + lint) and require a code-owner review before merging to master.
 # Auto-merge is intentionally OFF: every update is reviewed, not auto-merged.
@@ -12,6 +12,16 @@ updates:
       interval: "weekly"
     # Security advisories get their own PRs, opened daily.
     open-pull-requests-limit: 10
+    labels:
+      - "dependencies"
+    reviewers:
+      - "PapaEcho13"
+
+  # GitHub Actions workflow references (checkout, cache, etc.)
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
     labels:
       - "dependencies"
     reviewers:
