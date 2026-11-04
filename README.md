@@ -7,13 +7,8 @@ Fluidcraft orchestrates OpenFOAM's meshing and solving tools as subprocesses —
 no FFI. It targets a Linux-native, parallel, and GPU-capable workflow, with
 mesh creation as the core focus.
 
-> **Inspiration vs. IP.** The meshing workflow is inspired by general techniques
-> used by mainstream commercial CFD applications (octree/delaunay tessellation,
-> polyhedral conversion, prism inflation layers, y+ control). These are standard,
-> non-proprietary engineering concepts. All utilized tools
-> are open source, public domain, or used under fair use. See
-> [`roadmap.md#7-licensing--copyright-compliance`](roadmap.md#7-licensing--copyright-compliance)
-> for the binding rules.
+> **Licensing.** All tools Fluidcraft uses are open source, public domain, or
+> used under fair use. Details in [licensing.md](licensing.md).
 
 ---
 
@@ -128,4 +123,4 @@ Contributions are welcome! See [`CONTRIBUTING.md`](CONTRIBUTING.md).
 
 Fluidcraft's own code is licensed under the [MIT License](LICENSE). OpenFOAM is
 distributed under **GPL-v3** and is used here as an external subprocess — see
-[`roadmap.md#7`](roadmap.md#7-licensing--copyright-compliance) for details.
+[licensing.md](licensing.md) for details.

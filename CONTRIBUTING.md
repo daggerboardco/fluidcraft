@@ -44,7 +44,7 @@ cargo run -- solve ./scratch-case --solver simpleFoam
   keys and field names.
 - **Licensing:** every dependency must be open source, public domain, or fair
   use. Update [`LICENSES/DEPENDENCIES.md`](LICENSES/DEPENDENCIES.md) when adding
-  a crate. See [`roadmap.md#7`](roadmap.md#7-licensing--copyright-compliance).
+  a crate. See [licensing.md](licensing.md) for the binding rules.
 
 ## Opening a pull request
 

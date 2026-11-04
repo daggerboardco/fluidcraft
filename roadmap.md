@@ -162,41 +162,9 @@ used, copied, or ported):
 
 ## 7. Licensing & Copyright Compliance
 
-> **Binding rule.** Fluidcraft must not breach any third-party copyright. Any
-> proprietary commercial CFD product may be used only as an **inspiration for
-> general engineering techniques** — never as a source of code, binaries, assets,
-> resources, or source to copy, port, decompile, or reverse engineer.
-
-**All actual references and utilized tools must be one of:**
-
-1. **Open source** under a permissive or copyleft license we comply with
-   (e.g. MIT, Apache-2.0, BSD-3, GPL/LGPL with proper attribution/relinking), or
-2. **Public domain / copyright-free** (CC0, unlicensed public-domain data), or
-3. **Fair use** — only small, transformative excerpts with a documented legal
-   basis; never whole files or functional substitutes.
-
-**Do / Don't:**
-
-| Do | Don't |
-|---|---|
-| Use OpenFOAM, OpenCASCADE/OCCT, FreeCAD, cadquery, VTK, Qt, WGPU, Bevy, etc. | Copy/port proprietary CFD code, meshes, geometry, or binaries |
-| Follow open import standards (STEP/IGES per ISO) via open readers | Ship or bundle any proprietary file formats/readers |
-| Keep a `LICENSES/` file listing every third-party dependency + license | Decompile or reverse-engineer a competitor to reproduce behavior |
-| Attribute open-source components per their licenses | Reproduce copyrighted UI, icons, logos, or docs |
-
-**OpenFOAM note:** OpenFOAM is distributed under **GPL-v3** (GNU General Public
-License). Using it as a subprocess library is permitted, but GPL obligations
-(relinking/attribution, and considerations around combining) apply — confirm with
-legal counsel before distribution. Prefer invoking it as an external process
-(which this architecture already does) and keep Fluidcraft's own source under a
-permissive license (MIT) where legally sound.
-
-**Action items:**
-
-- Add `LICENSES/` documenting every third-party crate/tool and its license.
-- Add a top-level `LICENSE` (MIT) for Fluidcraft's own code.
-- Before shipping, run a dependency-license audit (`cargo audit`, `cargo about`,
-  or equivalent) and get a legal sign-off on the GPL (OpenFOAM) interaction.
+The full licensing and copyright-compliance rules live in
+[licensing.md](licensing.md). This project uses only open-source, public-domain,
+or fair-use tools, and treats proprietary CFD products as inspiration only.
 
 ---
 

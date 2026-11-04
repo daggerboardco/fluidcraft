@@ -5,8 +5,8 @@ Fluidcraft's own code is licensed under the [MIT License](../LICENSE).
 This file documents the licenses of third-party dependencies used by the
 project. Every dependency must be open source, public domain, or used under
 fair use. See
-[`roadmap.md#7-licensing--copyright-compliance`](../roadmap.md#7-licensing--copyright-compliance)
-for the binding rules.
+[`LICENSES/DEPENDENCIES.md`](LICENSES/DEPENDENCIES.md) for the per-dependency
+manifest, and [../licensing.md](../licensing.md) for the binding rules.
 
 ## Runtime Dependencies
 
