@@ -1,6 +1,7 @@
 //! Command-line interface for Fluidcraft.
 
 use crate::error::FluidcraftError;
+use crate::geometry;
 use crate::of;
 use anyhow::Result;
 use clap::{Parser, Subcommand};
@@ -41,6 +42,30 @@ pub enum Command {
         #[arg(long, default_value = "simpleFoam")]
         solver: String,
     },
+
+    /// Import a STEP model into a triangulated surface (STL).
+    Geometry {
+        #[command(subcommand)]
+        command: GeometryCommand,
+    },
+}
+
+#[derive(Subcommand, Debug)]
+pub enum GeometryCommand {
+    /// Convert a STEP file to a normalized ASCII STL via solidcraft.
+    Convert {
+        /// Input STEP file.
+        input: std::path::PathBuf,
+        /// Output STL file (normalized ASCII).
+        #[arg(long, short)]
+        out: std::path::PathBuf,
+        /// Unit scale applied to vertices (1.0 = as-is, 0.001 = mm->m).
+        #[arg(long, default_value_t = 1.0)]
+        scale: f32,
+        /// Path to the solidcraft-cli binary (else $FLUIDCRAFT_SOLIDCRAFT / PATH).
+        #[arg(long)]
+        solidcraft: Option<std::path::PathBuf>,
+    },
 }
 
 pub async fn run(args: Args) -> Result<()> {
@@ -49,6 +74,7 @@ pub async fn run(args: Args) -> Result<()> {
         Command::New { path, overwrite } => new(path, overwrite).await,
         Command::Mesh { path } => mesh(path).await,
         Command::Solve { path, solver } => solve(path, solver).await,
+        Command::Geometry { command } => geometry(command).await,
     }
 }
 
@@ -89,4 +115,28 @@ async fn solve(path: std::path::PathBuf, solver: String) -> Result<()> {
     of::solve(&path, &solver).await?;
     println!("Solve complete for {}", path.display());
     Ok(())
+}
+
+/// Run a geometry subcommand.
+async fn geometry(command: GeometryCommand) -> Result<()> {
+    match command {
+        GeometryCommand::Convert {
+            input,
+            out,
+            scale,
+            solidcraft,
+        } => {
+            let bin = geometry::locate_solidcraft(solidcraft.as_deref())?;
+            geometry::step_to_stl(&input, &out, &bin, scale)?;
+            let mesh = geometry::read_stl(&out)?;
+            println!(
+                "Converted {} -> {} ({} triangles, scale {})",
+                input.display(),
+                out.display(),
+                mesh.triangles.len(),
+                scale
+            );
+            Ok(())
+        }
+    }
 }
