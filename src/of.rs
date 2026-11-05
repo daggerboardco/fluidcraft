@@ -136,6 +136,10 @@ async fn write_files(case: &Path) -> Result<()> {
     tokio::fs::write(system.join("snappyHexMeshDict"), SNAPPYHEXMESH_DICT).await?;
     tokio::fs::write(system.join("controlDict"), CONTROL_DICT).await?;
     tokio::fs::write(system.join("decomposeDict"), DECOMPOSE_DICT).await?;
+    tokio::fs::write(system.join("fvSchemes"), FV_SCHEMES).await?;
+    tokio::fs::write(system.join("fvSolution"), FV_SOLUTION).await?;
+    tokio::fs::write(case.join("0").join("U"), FIELD_U).await?;
+    tokio::fs::write(case.join("0").join("p"), FIELD_P).await?;
     tokio::fs::write(constant.join("transportProperties"), TRANSPORT_PROPERTIES).await?;
 
     Ok(())
@@ -232,6 +236,35 @@ edges
 
 boundary
 (
+    inlet
+    {
+        type            patch;
+        faces           ( 0 4 7 3 );
+    }
+    outlet
+    {
+        type            patch;
+        faces           ( 1 2 6 5 );
+    }
+    lowerWall
+    {
+        type            patch;
+        faces           ( 0 1 5 4 );
+    }
+    upperWall
+    {
+        type            patch;
+        faces           ( 3 7 6 2 );
+    }
+    sideWalls
+    {
+        type            patch;
+        faces
+        (
+            ( 0 3 2 1 )
+            ( 4 5 6 7 )
+        );
+    }
 );
 
 mergePatchPairs
@@ -324,6 +357,169 @@ mu              1.8e-05;
 rho             1.225;
 "#;
 
+// Steady-state laminar channel: fvSchemes (discretisation).
+const FV_SCHEMES: &str = r#"/* Fluidcraft default fvSchemes */
+FoamFile {
+    version     2.0;
+    format      ascii;
+    class       dictionary;
+    object      fvSchemes;
+}
+
+ddtSchemes
+{
+    default     steadyState;
+};
+
+divSchemes
+{
+    default         none;
+    div(phi,U)      bounded Gauss linearUpwindUV;
+};
+
+laplacianSchemes
+{
+    default         bounded Gauss linear corrected;
+};
+
+interpolationSchemes
+{
+    default       linear;
+};
+
+snGradSchemes
+{
+    default       bounded corrected;
+};
+
+fluxRequired
+{
+    default       no;
+    p             no;
+};
+"#;
+
+// Steady-state laminar channel: fvSolution (SIMPLE + linear solvers).
+const FV_SOLUTION: &str = r#"/* Fluidcraft default fvSolution (SIMPLE) */
+FoamFile {
+    version     2.0;
+    format      ascii;
+    class       dictionary;
+    object      fvSolution;
+}
+
+solvers
+{
+    p
+    {
+        solver          PCG;
+        preconditioner  DIC;
+        tolerance       1e-07;
+        relTol          0.1;
+    }
+
+    U
+    {
+        solver          PBiCG;
+        preconditioner  DILU;
+        tolerance       1e-06;
+        relTol          0.1;
+    }
+};
+
+SIMPLE
+{
+    nNonOrthogonalCorrectors  0;
+
+    pRefCell                  0;
+    pRefValue                 0;
+
+    residualControl
+    {
+        p                     1e-3;
+        U                     1e-3;
+    }
+};
+"#;
+
+// Initial + boundary-condition field U (laminar inflow, no-slip walls).
+const FIELD_U: &str = r#"/* Fluidcraft default U */
+FoamFile {
+    version     2.0;
+    format      ascii;
+    class       volVectorField;
+    object      U;
+}
+
+dimensions      [0 1 -1 0 0 0 0];
+
+internalField   value uniform (0.1 0 0);
+
+boundaryCondition
+{
+    inlet
+    {
+        type            fixedValue;
+        value           uniform (0.1 0 0);
+    }
+    outlet
+    {
+        type            zeroGradient;
+    }
+    lowerWall
+    {
+        type            noSlip;
+    }
+    upperWall
+    {
+        type            noSlip;
+    }
+    sideWalls
+    {
+        type            noSlip;
+    }
+};
+"#;
+
+// Initial + boundary-condition field p (reference at outlet).
+const FIELD_P: &str = r#"/* Fluidcraft default p */
+FoamFile {
+    version     2.0;
+    format      ascii;
+    class       volScalarField;
+    object      p;
+}
+
+dimensions      [0 2 -2 0 0 0 0];
+
+internalField   value uniform 0;
+
+boundaryCondition
+{
+    inlet
+    {
+        type            zeroGradient;
+    }
+    outlet
+    {
+        type            fixedValue;
+        value           uniform 0;
+    }
+    lowerWall
+    {
+        type            zeroGradient;
+    }
+    upperWall
+    {
+        type            zeroGradient;
+    }
+    sideWalls
+    {
+        type            zeroGradient;
+    }
+};
+"#;
+
 // --- Tests ---------------------------------------------------------------
 
 #[cfg(test)]
@@ -401,7 +597,105 @@ mod tests {
 
         let result = create_case(&dir, false).await;
         assert!(result.is_ok(), "expected success in empty dir: {result:?}");
+        // The generated case must be a complete, runnable baseline: meshing
+        // dictionaries, solver control (fvSchemes/fvSolution), and initial
+        // field files with boundary conditions.
         assert!(dir.join("system").join("blockMeshDict").exists());
+        assert!(dir.join("system").join("fvSchemes").exists());
+        assert!(dir.join("system").join("fvSolution").exists());
+        assert!(dir.join("0").join("U").exists());
+        assert!(dir.join("0").join("p").exists());
+        // Every patch defined in blockMeshDict must have matching BCs in U.
+        let u_text = std::fs::read_to_string(dir.join("0").join("U")).unwrap_or_default();
+        for patch in ["inlet", "outlet", "lowerWall", "upperWall", "sideWalls"] {
+            assert!(
+                u_text.contains(patch),
+                "U boundary conditions must define patch '{patch}'"
+            );
+        }
+
+        let _ = tokio::fs::remove_dir_all(&dir).await;
+    }
+
+    // Extract the ordered list of patch names declared in a dictionary's
+    // `boundary` / `boundaryCondition` section. A patch name is a bare
+    // identifier line immediately followed by a `{` line. The section keyword
+    // itself (its opening brace) is skipped, and scanning stops at the
+    // section's top-level closing bracket.
+    fn patch_names(text: &str, section_kw: &str) -> Vec<String> {
+        let lines: Vec<&str> = text.lines().collect();
+        let mut names = Vec::new();
+        let mut in_section = false;
+        for (idx, raw) in lines.iter().enumerate() {
+            let line = raw.trim();
+            if line == section_kw {
+                in_section = true;
+                continue;
+            }
+            if !in_section {
+                continue;
+            }
+            // Section ends at a top-level closing bracket (unindented).
+            if !raw.starts_with(char::is_whitespace) && (line == "}" || line == ")" || line == ");")
+            {
+                break;
+            }
+            if line.ends_with('{') && idx > 0 {
+                let prev = lines[idx - 1].trim();
+                if prev == section_kw {
+                    // This is the section's opening brace, not a patch.
+                    continue;
+                }
+                if !prev.is_empty() && prev.chars().all(|c| c.is_alphanumeric() || c == '_') {
+                    names.push(prev.to_string());
+                }
+            }
+        }
+        names
+    }
+
+    #[tokio::test]
+    async fn generated_case_is_a_consistent_baseline() {
+        // The generated case must be a complete, runnable baseline: every
+        // dictionary brace-balanced, and the patch set agreeing across
+        // blockMeshDict, U, and p so OpenFOAM will not reject unknown patches.
+        let dir = std::env::temp_dir().join(format!("oc-test-baseline-{}", std::process::id()));
+        let _ = tokio::fs::remove_dir_all(&dir).await;
+        tokio::fs::create_dir_all(&dir).await.unwrap();
+
+        create_case(&dir, false).await.unwrap();
+
+        let read = |rel: &str| std::fs::read_to_string(dir.join(rel)).unwrap_or_default();
+
+        for rel in [
+            "system/blockMeshDict",
+            "system/snappyHexMeshDict",
+            "system/controlDict",
+            "system/fvSchemes",
+            "system/fvSolution",
+            "system/decomposeDict",
+            "constant/transportProperties",
+            "0/U",
+            "0/p",
+        ] {
+            let s = read(rel);
+            let open = s.chars().filter(|c| *c == '{').count();
+            let close = s.chars().filter(|c| *c == '}').count();
+            assert_eq!(
+                open, close,
+                "unbalanced braces in {rel}: {open} open vs {close} close"
+            );
+        }
+
+        let mut mesh = patch_names(&read("system/blockMeshDict"), "boundary");
+        let mut u = patch_names(&read("0/U"), "boundaryCondition");
+        let mut p = patch_names(&read("0/p"), "boundaryCondition");
+        mesh.sort();
+        u.sort();
+        p.sort();
+        assert!(!mesh.is_empty(), "expected at least one patch");
+        assert_eq!(mesh, u, "blockMeshDict and U patch sets differ");
+        assert_eq!(mesh, p, "blockMeshDict and p patch sets differ");
 
         let _ = tokio::fs::remove_dir_all(&dir).await;
     }
