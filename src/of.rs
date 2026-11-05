@@ -239,22 +239,22 @@ boundary
     inlet
     {
         type            patch;
-        faces           ( 0 4 7 3 );
+        faces           ((0 4 7 3));
     }
     outlet
     {
         type            patch;
-        faces           ( 1 2 6 5 );
+        faces           ((1 2 6 5));
     }
     lowerWall
     {
         type            patch;
-        faces           ( 0 1 5 4 );
+        faces           ((0 1 5 4));
     }
     upperWall
     {
         type            patch;
-        faces           ( 3 7 6 2 );
+        faces           ((3 7 6 2));
     }
     sideWalls
     {
@@ -453,9 +453,9 @@ FoamFile {
 
 dimensions      [0 1 -1 0 0 0 0];
 
-internalField   value uniform (0.1 0 0);
+internalField   uniform (0.1 0 0);
 
-boundaryCondition
+boundaryField
 {
     inlet
     {
@@ -492,9 +492,9 @@ FoamFile {
 
 dimensions      [0 2 -2 0 0 0 0];
 
-internalField   value uniform 0;
+internalField   uniform 0;
 
-boundaryCondition
+boundaryField
 {
     inlet
     {
@@ -618,10 +618,10 @@ mod tests {
     }
 
     // Extract the ordered list of patch names declared in a dictionary's
-    // `boundary` / `boundaryCondition` section. A patch name is a bare
-    // identifier line immediately followed by a `{` line. The section keyword
-    // itself (its opening brace) is skipped, and scanning stops at the
-    // section's top-level closing bracket.
+    // `boundaryField` section. A patch name is a bare identifier line
+    // immediately followed by a `{` line. The section keyword itself (its
+    // opening brace) is skipped, and scanning stops at the section's
+    // top-level closing bracket.
     fn patch_names(text: &str, section_kw: &str) -> Vec<String> {
         let lines: Vec<&str> = text.lines().collect();
         let mut names = Vec::new();
@@ -688,14 +688,39 @@ mod tests {
         }
 
         let mut mesh = patch_names(&read("system/blockMeshDict"), "boundary");
-        let mut u = patch_names(&read("0/U"), "boundaryCondition");
-        let mut p = patch_names(&read("0/p"), "boundaryCondition");
+        let mut u = patch_names(&read("0/U"), "boundaryField");
+        let mut p = patch_names(&read("0/p"), "boundaryField");
         mesh.sort();
         u.sort();
         p.sort();
         assert!(!mesh.is_empty(), "expected at least one patch");
         assert_eq!(mesh, u, "blockMeshDict and U patch sets differ");
         assert_eq!(mesh, p, "blockMeshDict and p patch sets differ");
+
+        // The generated templates must use valid OpenFOAM syntax, not just be
+        // internally consistent: field files use `boundaryField` (not the
+        // misspelled `boundaryCondition`), the internal field has no stray
+        // `value` keyword, and blockMesh faces are nested vertex lists.
+        for field in ["0/U", "0/p"] {
+            let text = read(field);
+            assert!(
+                text.contains("boundaryField"),
+                "{field} must use the OpenFOAM `boundaryField` keyword"
+            );
+            assert!(
+                !text.contains("boundaryCondition"),
+                "{field} must not use the invalid `boundaryCondition` spelling"
+            );
+            assert!(
+                !text.contains("internalField   value") && !text.contains("internalField value"),
+                "{field} internalField must be `internalField uniform ...` without a stray `value`"
+            );
+        }
+        let mesh_text = read("system/blockMeshDict");
+        assert!(
+            mesh_text.contains("((0 4 7 3))"),
+            "blockMeshDict faces must be nested vertex lists, e.g. ((0 4 7 3))"
+        );
 
         let _ = tokio::fs::remove_dir_all(&dir).await;
     }
