@@ -8,6 +8,7 @@
 pub mod cli;
 pub mod error;
 pub mod geometry;
+pub mod meshing;
 pub mod of;
 
 use anyhow::Result;

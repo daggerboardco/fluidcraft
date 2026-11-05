@@ -26,6 +26,18 @@ pub enum Command {
         /// Overwrite an existing case directory (refused by default).
         #[arg(long)]
         overwrite: bool,
+        /// Import a STEP model and generate a meshing case around it.
+        #[arg(long)]
+        geometry: Option<std::path::PathBuf>,
+        /// Unit scale for the imported STL (1.0 = as-is, 0.001 = mm -> m).
+        #[arg(long, default_value_t = 1.0)]
+        scale: f32,
+        /// Add prism boundary-layer inflation layers.
+        #[arg(long)]
+        layers: bool,
+        /// Path to the solidcraft-cli binary (else $FLUIDCRAFT_SOLIDCRAFT / PATH).
+        #[arg(long)]
+        solidcraft: Option<std::path::PathBuf>,
     },
 
     /// Run the meshing pipeline (blockMesh + snappyHexMesh).
@@ -71,7 +83,14 @@ pub enum GeometryCommand {
 pub async fn run(args: Args) -> Result<()> {
     match args.command {
         Command::Check => check().await,
-        Command::New { path, overwrite } => new(path, overwrite).await,
+        Command::New {
+            path,
+            overwrite,
+            geometry,
+            scale,
+            layers,
+            solidcraft,
+        } => new(path, overwrite, geometry, scale, layers, solidcraft).await,
         Command::Mesh { path } => mesh(path).await,
         Command::Solve { path, solver } => solve(path, solver).await,
         Command::Geometry { command } => geometry(command).await,
@@ -99,9 +118,31 @@ async fn check() -> Result<()> {
     Ok(())
 }
 
-async fn new(path: std::path::PathBuf, overwrite: bool) -> Result<()> {
-    of::create_case(&path, overwrite).await?;
-    println!("Created OpenFOAM case at {}", path.display());
+async fn new(
+    path: std::path::PathBuf,
+    overwrite: bool,
+    geometry: Option<std::path::PathBuf>,
+    scale: f32,
+    layers: bool,
+    solidcraft: Option<std::path::PathBuf>,
+) -> Result<()> {
+    match geometry {
+        Some(input) => {
+            let profile = of::GeometryProfile {
+                input,
+                scale,
+                add_layers: layers,
+                solidcraft,
+            };
+            let geometry_path = profile.input.display().to_string();
+            of::create_case_with_geometry(&path, overwrite, Some(profile)).await?;
+            println!("Created OpenFOAM case with geometry {} at {}", geometry_path, path.display());
+        }
+        None => {
+            of::create_case(&path, overwrite).await?;
+            println!("Created OpenFOAM case at {}", path.display());
+        }
+    }
     Ok(())
 }
 

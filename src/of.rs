@@ -5,6 +5,8 @@
 //! subprocesses. No FFI.
 
 use crate::error::FluidcraftError;
+use crate::geometry;
+use crate::meshing;
 use anyhow::{Context, Result};
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -16,6 +18,26 @@ pub struct Openfoam {
     pub root: PathBuf,
     /// Detected version string.
     pub version: String,
+}
+
+/// Profile describing how to import geometry into a new case.
+///
+/// When present, `create_case_with_geometry` converts the STEP model to a
+/// normalized ASCII STL, derives the mesh bounding box from it, and generates
+/// geometry-aware `blockMeshDict` / `snappyHexMeshDict` entries that enclose
+/// the part. The generated blockMesh patches (`inlet`, `outlet`, `lowerWall`,
+/// `upperWall`, `sideWalls`) match the baseline field BCs, so cases stay
+/// consistent whether or not geometry is imported.
+#[derive(Debug, Clone)]
+pub struct GeometryProfile {
+    /// Input STEP file path.
+    pub input: PathBuf,
+    /// Unit scale applied to the STL (1.0 = as-is, 0.001 = mm -> m).
+    pub scale: f32,
+    /// Optional explicit solidcraft binary path (else $FLUIDCRAFT_SOLIDCRAFT / PATH).
+    pub solidcraft: Option<PathBuf>,
+    /// Enable prism boundary-layer inflation layers.
+    pub add_layers: bool,
 }
 
 /// Locate an OpenFOAM installation and report its version.
@@ -86,7 +108,7 @@ async fn run_tool(
     Ok(output)
 }
 
-/// Create a minimal OpenFOAM case directory skeleton.
+/// Create a minimal OpenFOAM case directory skeleton with an analytical box.
 ///
 /// Layout:
 /// ```text
@@ -96,6 +118,21 @@ async fn run_tool(
 ///   constant/   polyMesh, transportProperties, thermophysicalProperties
 /// ```
 pub async fn create_case(case: &Path, overwrite: bool) -> Result<()> {
+    create_case_with_geometry(case, overwrite, None).await
+}
+
+/// Create a minimal OpenFOAM case directory skeleton, importing geometry when
+/// provided.
+///
+/// With `geometry`, the STEP model is converted to an ASCII STL under
+/// `constant/geometry/`, the mesh bounding box is derived from it, and
+/// geometry-aware `blockMeshDict` / `snappyHexMeshDict` are generated to enclose
+/// the part. Without it, the analytical-box baseline templates are used.
+pub async fn create_case_with_geometry(
+    case: &Path,
+    overwrite: bool,
+    geometry: Option<GeometryProfile>,
+) -> Result<()> {
     let resolved = resolve_case(case);
 
     if !overwrite && case_exists(&resolved).await? {
@@ -111,7 +148,7 @@ pub async fn create_case(case: &Path, overwrite: bool) -> Result<()> {
             .with_context(|| format!("creating {}", resolved.join(sub).display()))?;
     }
 
-    write_files(&resolved).await?;
+    write_files(&resolved, geometry.as_ref()).await?;
     Ok(())
 }
 
@@ -128,24 +165,114 @@ async fn case_exists(case: &Path) -> Result<bool> {
 }
 
 /// Generate the default case files.
-async fn write_files(case: &Path) -> Result<()> {
+///
+/// When `geometry` is provided, the STEP model is converted to an ASCII STL and
+/// the mesh dictionaries are generated to enclose it; otherwise the analytical
+/// box baseline templates are written.
+async fn write_files(case: &Path, geometry: Option<&GeometryProfile>) -> Result<()> {
     let system = case.join("system");
     let constant = case.join("constant");
 
-    tokio::fs::write(system.join("blockMeshDict"), BLOCK_MESH_DICT).await?;
-    tokio::fs::write(system.join("snappyHexMeshDict"), SNAPPYHEXMESH_DICT).await?;
+    let (block_mesh_dict, snappy_dict) = match geometry {
+        Some(profile) => generate_geometry_dicts(case, profile).await?,
+        None => (BLOCK_MESH_DICT.to_string(), SNAPPYHEXMESH_DICT.to_string()),
+    };
+
+    tokio::fs::write(system.join("blockMeshDict"), block_mesh_dict).await?;
+    tokio::fs::write(system.join("snappyHexMeshDict"), snappy_dict).await?;
     tokio::fs::write(system.join("controlDict"), CONTROL_DICT).await?;
     tokio::fs::write(system.join("decomposeDict"), DECOMPOSE_DICT).await?;
     tokio::fs::write(system.join("fvSchemes"), FV_SCHEMES).await?;
     tokio::fs::write(system.join("fvSolution"), FV_SOLUTION).await?;
-    tokio::fs::write(case.join("0").join("U"), FIELD_U).await?;
-    tokio::fs::write(case.join("0").join("p"), FIELD_P).await?;
-    tokio::fs::write(case.join("0").join("nut"), FIELD_NUT).await?;
-    tokio::fs::write(case.join("0").join("nuTilda"), FIELD_NUTTILDA).await?;
+
+    // Initial + boundary-condition fields. When geometry is imported, the
+    // snappy generator creates a wall patch for the imported triSurface, so the
+    // fields must define a matching BC for that patch (audit 2026-11-05).
+    let stem = geometry
+        .and_then(|g| g.input.file_stem().map(|s| s.to_string_lossy().into_owned()))
+        .unwrap_or_else(|| "part".to_string());
+    let has_geometry = geometry.is_some();
+
+    let u = if has_geometry {
+        with_surface_bc(FIELD_U, &surface_wall_bc(&stem, "noSlip", None))
+    } else {
+        FIELD_U.to_string()
+    };
+    let p = if has_geometry {
+        with_surface_bc(FIELD_P, &surface_wall_bc(&stem, "zeroGradient", None))
+    } else {
+        FIELD_P.to_string()
+    };
+    let nut = if has_geometry {
+        with_surface_bc(FIELD_NUT, &surface_wall_bc(&stem, "zeroGradient", None))
+    } else {
+        FIELD_NUT.to_string()
+    };
+    let nu_tilda = if has_geometry {
+        with_surface_bc(FIELD_NUTTILDA, &surface_wall_bc(&stem, "fixedValue", Some("uniform 1e-05")))
+    } else {
+        FIELD_NUTTILDA.to_string()
+    };
+
+    tokio::fs::write(case.join("0").join("U"), u).await?;
+    tokio::fs::write(case.join("0").join("p"), p).await?;
+    tokio::fs::write(case.join("0").join("nut"), nut).await?;
+    tokio::fs::write(case.join("0").join("nuTilda"), nu_tilda).await?;
     tokio::fs::write(constant.join("transportProperties"), TRANSPORT_PROPERTIES).await?;
     tokio::fs::write(constant.join("momentumTransport"), MOMENTUM_TRANSPORT).await?;
 
     Ok(())
+}
+
+/// Convert an imported STEP model to a normalized ASCII STL and generate the
+/// mesh dictionaries that enclose it.
+///
+/// Returns `(blockMeshDict, snappyHexMeshDict)`. The STL is written to
+/// `constant/geometry/<stem>.stl`, and the blockMesh box is sized with a margin
+/// equal to half the part's largest dimension so snapping and boundary layers
+/// have room to develop.
+async fn generate_geometry_dicts(
+    case: &Path,
+    profile: &GeometryProfile,
+) -> Result<(String, String)> {
+    let geometry_dir = case.join("constant").join("geometry");
+    tokio::fs::create_dir_all(&geometry_dir)
+        .await
+        .with_context(|| format!("creating {}", geometry_dir.display()))?;
+
+    let stem = profile
+        .input
+        .file_stem()
+        .map(|s| s.to_string_lossy().into_owned())
+        .unwrap_or_else(|| "part".to_string());
+    let surface_file = format!("{}.stl", stem);
+    let stl_path = geometry_dir.join(&surface_file);
+
+    // Locate the solidcraft binary and convert STEP -> STL -> bounding box.
+    let bbox = {
+        let bin = geometry::locate_solidcraft(profile.solidcraft.as_deref())?;
+        geometry::step_to_stl(&profile.input, &stl_path, &bin, profile.scale)?;
+        let mesh = geometry::read_stl(&stl_path)?;
+        let (min, max) = mesh.bounding_box();
+        meshing::BoundingBox {
+            min: [min[0] as f64, min[1] as f64, min[2] as f64],
+            max: [max[0] as f64, max[1] as f64, max[2] as f64],
+        }
+    };
+    let _ = case;
+
+    let margin = 0.5 * bbox.max_extent();
+    let config = meshing::MeshingConfig {
+        geometry: bbox,
+        box_margin: margin,
+        add_layers: profile.add_layers,
+        ..Default::default()
+    };
+
+    let block_mesh_dict = meshing::generate_block_mesh_dict(&bbox, margin);
+    let snappy_dict = meshing::generate_snappy_hex_mesh_dict(&config, &stem, &surface_file);
+
+    Ok((block_mesh_dict, snappy_dict))
 }
 
 /// Run `blockMesh` for the base hex mesh, then `snappyHexMesh` for
@@ -748,10 +875,65 @@ boundaryField
 };
 "#;
 
+/// Build a wall boundary-condition block for the imported-surface patch that
+/// snappyHexMesh creates from the triSurface. `value` is optional (None for
+/// noSlip / zeroGradient).
+fn surface_wall_bc(name: &str, bc_type: &str, value: Option<&str>) -> String {
+    match value {
+        Some(v) => format!(
+            "    {name}\n    {{\n        type            {bt};\n        value           {val};\n    }}\n",
+            name = name,
+            bt = bc_type,
+            val = v
+        ),
+        None => format!(
+            "    {name}\n    {{\n        type            {bt};\n    }}\n",
+            name = name,
+            bt = bc_type
+        ),
+    }
+}
+
+/// Inject a boundary-condition block into a field template's `boundaryField`,
+/// right after the `boundaryField {` opening. Used to add the imported-surface
+/// wall patch to a geometry case. Brace balance and the patch-set parser are
+/// preserved because exactly one `{` and one `}` are inserted.
+fn with_surface_bc(base: &str, entry: &str) -> String {
+    const MARKER: &str = "boundaryField\n{";
+    match base.find(MARKER) {
+        Some(pos) => {
+            let open = pos + MARKER.len();
+            let mut out = String::with_capacity(base.len() + entry.len());
+            out.push_str(&base[..open]);
+            out.push_str(entry);
+            out.push_str(&base[open..]);
+            out
+        }
+        None => base.to_string(),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use std::path::Path;
+
+    #[test]
+    fn with_surface_bc_injects_patch_and_keeps_balance() {
+        let injected = with_surface_bc(FIELD_U, &surface_wall_bc("washer", "noSlip", None));
+        assert_eq!(
+            injected.matches('{').count(),
+            injected.matches('}').count(),
+            "brace balance must hold after injection"
+        );
+        assert!(injected.contains("boundaryField"));
+        assert!(injected.contains("washer"));
+        assert!(injected.contains("noSlip"));
+        // Original box patches survive.
+        for patch in ["inlet", "outlet", "lowerWall", "upperWall", "sideWalls"] {
+            assert!(injected.contains(patch), "lost box patch {patch}");
+        }
+    }
 
     #[test]
     fn resolve_case_returns_absolute_path() {

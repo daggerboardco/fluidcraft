@@ -89,6 +89,16 @@ fn contains_token(haystack: &[u8], needle: &[u8]) -> bool {
     haystack.windows(needle.len()).any(|w| w == needle)
 }
 
+/// Parse an STL numeric token, returning a clear error on malformed input.
+///
+/// Silently substituting zero (the previous behaviour) could corrupt a vertex
+/// or normal without warning; failing loudly keeps a malformed surface from
+/// silently producing a wrong mesh (audit 2026-11-05).
+fn parse_stl_f32(tok: &str) -> Result<f32> {
+    tok.parse::<f32>()
+        .with_context(|| format!("invalid number in STL token: '{tok}'"))
+}
+
 fn read_stl_ascii(bytes: &[u8]) -> Result<StlMesh> {
     let text = String::from_utf8(bytes.to_vec())
         .context("ASCII STL is not valid UTF-8")?;
@@ -106,25 +116,42 @@ fn read_stl_ascii(bytes: &[u8]) -> Result<StlMesh> {
             let mut normal = [0.0f32; 3];
             let mut verts = Vec::new();
             i += 1; // "facet"
-            if i + 3 > tokens.len() {
-                return Err(anyhow::anyhow!("malformed ASCII STL: facet with no normal"));
+            // ASCII STL is `facet normal nx ny nz`: skip the literal "normal"
+            // keyword before its three components. Reading the keyword as a
+            // component silently zeroed every normal and dropped a coordinate
+            // (audit 2026-11-05).
+            if i >= tokens.len() || tokens[i] != "normal" {
+                return Err(anyhow::anyhow!(
+                    "malformed ASCII STL: facet missing 'normal' keyword"
+                ));
             }
-            normal[0] = tokens[i].parse().unwrap_or(0.0);
-            normal[1] = tokens[i + 1].parse().unwrap_or(0.0);
-            normal[2] = tokens[i + 2].parse().unwrap_or(0.0);
+            i += 1; // "normal"
+            if i + 3 > tokens.len() {
+                return Err(anyhow::anyhow!(
+                    "malformed ASCII STL: facet with no normal components"
+                ));
+            }
+            normal[0] = parse_stl_f32(&tokens[i])?;
+            normal[1] = parse_stl_f32(&tokens[i + 1])?;
+            normal[2] = parse_stl_f32(&tokens[i + 2])?;
             i += 3;
             // skip "outer" "loop"
             while i < tokens.len() && tokens[i] != "vertex" {
                 i += 1;
             }
             while i < tokens.len() && tokens[i] == "vertex" {
-                if i + 3 > tokens.len() {
-                    return Err(anyhow::anyhow!("malformed ASCII STL: vertex with no coords"));
+                // Reads tokens[i+1..=i+3]; the guard must admit the last index,
+                // so error when i + 3 >= len. The prior `>` off-by-one let a
+                // truncated final vertex index out of bounds and panic.
+                if i + 3 >= tokens.len() {
+                    return Err(anyhow::anyhow!(
+                        "malformed ASCII STL: vertex with incomplete coordinates"
+                    ));
                 }
                 let v = [
-                    tokens[i + 1].parse().unwrap_or(0.0),
-                    tokens[i + 2].parse().unwrap_or(0.0),
-                    tokens[i + 3].parse().unwrap_or(0.0),
+                    parse_stl_f32(&tokens[i + 1])?,
+                    parse_stl_f32(&tokens[i + 2])?,
+                    parse_stl_f32(&tokens[i + 3])?,
                 ];
                 verts.push(v);
                 i += 4;
@@ -366,5 +393,50 @@ mod tests {
         assert_eq!(min, [0.0, 0.0, 0.0]);
         assert_eq!(max, [1.0, 1.0, 0.0]);
         assert!((mesh.max_extent() - 1.0).abs() < 1e-6);
+    }
+
+    #[test]
+    fn ascii_roundtrip_preserves_normal() {
+        // The parser must read the literal "normal" keyword and its three
+        // components. Earlier code consumed the keyword as a component, zeroing
+        // every normal (audit 2026-11-05).
+        let dir = std::env::temp_dir().join(format!("fc-stl-norm-{}", std::process::id()));
+        let path = dir.join("tri.stl");
+        std::fs::create_dir_all(&dir).unwrap();
+        write_stl_ascii(&path, &sample_mesh(), 1.0).unwrap();
+
+        let mesh = read_stl(&path).unwrap();
+        assert_eq!(mesh.triangles[0].normal, [0.0, 0.0, 1.0]);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn ascii_stl_truncated_vertex_errors_not_panics() {
+        // A truncated final vertex (missing coordinates) must return an error,
+        // not panic on an out-of-bounds index.
+        let text = "solid x\nfacet normal 0 0 1\nouter loop\nvertex 0 0 0\nvertex 1 0";
+        let dir = std::env::temp_dir().join(format!("fc-stl-trunc-{}", std::process::id()));
+        let path = dir.join("trunc.stl");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(&path, text).unwrap();
+
+        let res = read_stl(&path);
+        assert!(res.is_err(), "truncated vertex should error, got {res:?}");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn ascii_stl_invalid_coord_errors() {
+        // Invalid numeric coordinates must surface an error, not silently
+        // become zero (audit 2026-11-05).
+        let text = "solid x\nfacet normal 0 0 1\nouter loop\nvertex a b c\nvertex 1 0 0\nvertex 0 1 0\nendloop\nendfacet\nendsolid x\n";
+        let dir = std::env::temp_dir().join(format!("fc-stl-bad-{}", std::process::id()));
+        let path = dir.join("bad.stl");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(&path, text).unwrap();
+
+        let res = read_stl(&path);
+        assert!(res.is_err(), "invalid coordinate should error, got {res:?}");
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }
