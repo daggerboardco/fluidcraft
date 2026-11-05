@@ -140,7 +140,10 @@ async fn write_files(case: &Path) -> Result<()> {
     tokio::fs::write(system.join("fvSolution"), FV_SOLUTION).await?;
     tokio::fs::write(case.join("0").join("U"), FIELD_U).await?;
     tokio::fs::write(case.join("0").join("p"), FIELD_P).await?;
+    tokio::fs::write(case.join("0").join("nut"), FIELD_NUT).await?;
+    tokio::fs::write(case.join("0").join("nuTilda"), FIELD_NUTTILDA).await?;
     tokio::fs::write(constant.join("transportProperties"), TRANSPORT_PROPERTIES).await?;
+    tokio::fs::write(constant.join("momentumTransport"), MOMENTUM_TRANSPORT).await?;
 
     Ok(())
 }
@@ -280,32 +283,113 @@ FoamFile {
     object      snappyHexMeshDict;
 }
 
-castellateControls {
+// Which steps to run for the baseline.
+castellatedMesh true;
+snap            true;
+addLayers       false;
+
+// Geometry. For the baseline we use an analytical `box` so the generated case
+// runs with no external surface file. Once real geometry import exists, replace
+// with named triSurface entries (STL/OBJ).
+geometry
+{
+    refinementBox
+    {
+        type box;
+        min (0 0 0);
+        max (1 1 1);
+    }
+};
+
+// Settings for the castellatedMesh generation.
+castellatedMeshControls
+{
     maxLocalCells 100000;
-    maxTotalCells 10000000;
-    maxGlobalSkewness 150;
-    castellationsOnSurface 1;
+    maxGlobalCells 7000000;
+    minRefinementCells 10;
+    maxLoadUnbalance 0.10;
+    nCellsBetweenLevels 3;
+
+    features
+    (
+    );
+
+    refinementSurfaces
+    {
+    }
+
+    resolveFeatureAngle 60;
+
+    refinementRegions
+    {
+        refinementBox
+        {
+            mode    inside;
+            level   1;
+        }
+    }
+
+    insidePoint (0.5 0.5 0.5);
+
+    allowFreeStandingZoneFaces false;
 }
 
-snapControls {
-    nSmoothPatches 3;
-    nSmoothSurfacePoints 5;
-    nSmoothPatch 5;
-    tolerance 2.0;
-    nSolveIter 100;
+// Settings for the snapping.
+snapControls
+{
+    nSmoothPatch 3;
+    tolerance 4.0;
+    nSolveIter 30;
     nRelaxIter 5;
 }
 
-addLayersControls {
+// Settings for the layer addition (disabled in baseline).
+addLayersControls
+{
     relativeSizes true;
-    expansionRatio 1.2;
+
+    layers
+    {
+    }
+
+    expansionRatio 1.0;
     finalLayerThickness 0.3;
-    minThickness 0.05;
-    nSmoothThickness 100;
-    maxThicknessIter 100;
-    tolerance 0.1;
-    nSmoothSurfaces 5;
+    minThickness 0.1;
+    nGrow 0;
+    featureAngle 100;
+    slipFeatureAngle 30;
+    nRelaxIter 3;
+    nSmoothSurfaceNormals 1;
+    nSmoothNormals 3;
+    nSmoothThickness 2;
+    maxFaceThicknessRatio 0.5;
+    maxThicknessToMedialRatio 0.3;
+    minMedianAxisAngle 90;
+    nBufferCellsNoExtrude 0;
+    nLayerIter 50;
 }
+
+// Generic mesh quality settings.
+meshQualityControls
+{
+    maxNonOrtho 65;
+    maxBoundarySkewness 20;
+    maxInternalSkewness 4;
+    maxConcave 80;
+    minFlatness 0.5;
+    minVol -1e30;
+    minTetQuality 1e-30;
+    minTwist 0.02;
+    minDeterminant 0.001;
+    minFaceWeight 0.02;
+    minVolRatio 0.01;
+
+    nSmoothScale 4;
+    errorReduction 0.75;
+}
+
+// Merge tolerance. Fraction of the overall bounding box of the initial mesh.
+mergeTolerance 1e-6;
 "#;
 
 const CONTROL_DICT: &str = r#"/* Fluidcraft default controlDict */
@@ -316,14 +400,39 @@ FoamFile {
     object      controlDict;
 }
 
-startTime   0;
-stopAt      endTime;
-endTime     100;
-deltaT      1;
-writeInterval 10;
-purgeWrite  0;
-writeFormat ascii;
-printTime   true;
+solver          incompressibleFluid;
+
+startFrom       latestTime;
+
+startTime       0;
+
+stopAt          endTime;
+
+endTime         0.03;
+
+deltaT          0.0001;
+
+writeControl    adjustableRunTime;
+
+writeInterval   0.001;
+
+purgeWrite      0;
+
+writeFormat     ascii;
+
+writePrecision  6;
+
+writeCompression off;
+
+timeFormat      general;
+
+timePrecision   6;
+
+runTimeModifiable yes;
+
+adjustTimeStep  yes;
+
+maxCo           5;
 "#;
 
 const DECOMPOSE_DICT: &str = r#"/* Fluidcraft default decomposeDict (metis) */
@@ -353,8 +462,26 @@ FoamFile {
 }
 
 transportModel  Newtonian;
+viscosityModel  constant;
 mu              1.8e-05;
+nu              1.4e-05;
 rho             1.225;
+"#;
+
+// OpenFOAM-14 momentum model selection. Laminar is the minimal baseline that
+// needs no turbulence fields (nut/nuTilda). Once real geometry import exists,
+// swap to a RAS model (e.g. kEpsilon) with `turbulence on` and add the
+// corresponding initial fields.
+const MOMENTUM_TRANSPORT: &str = r#"/* Fluidcraft default momentumTransport */
+FoamFile {
+    version     2.0;
+    format      ascii;
+    class       dictionary;
+    location    "constant";
+    object      momentumTransport;
+}
+
+simulationType laminar;
 "#;
 
 // Steady-state laminar channel: fvSchemes (discretisation).
@@ -371,15 +498,21 @@ ddtSchemes
     default     steadyState;
 };
 
+gradSchemes
+{
+    default         Gauss linear;
+    grad(U)         cellLimited Gauss linear 1;
+};
+
 divSchemes
 {
     default         none;
-    div(phi,U)      bounded Gauss linearUpwindUV;
+    div(phi,U)      Gauss upwind;
 };
 
 laplacianSchemes
 {
-    default         bounded Gauss linear corrected;
+    default         Gauss linear corrected;
 };
 
 interpolationSchemes
@@ -389,7 +522,7 @@ interpolationSchemes
 
 snGradSchemes
 {
-    default       bounded corrected;
+    default       corrected;
 };
 
 fluxRequired
@@ -412,24 +545,37 @@ solvers
 {
     p
     {
-        solver          PCG;
-        preconditioner  DIC;
-        tolerance       1e-07;
+        solver           GAMG;
+        smoother         DICGaussSeidel;
+        tolerance        1e-7;
+        relTol           0.01;
+    }
+
+    pFinal
+    {
+        $p;
+        relTol          0;
+    }
+
+    "(U)"
+    {
+        solver          PBiCGStab;
+        preconditioner  DILU;
+        tolerance       1e-05;
         relTol          0.1;
     }
 
-    U
+    "(U)Final"
     {
-        solver          PBiCG;
-        preconditioner  DILU;
-        tolerance       1e-06;
-        relTol          0.1;
+        $U;
+        relTol          0;
     }
 };
 
 SIMPLE
 {
-    nNonOrthogonalCorrectors  0;
+    nCorrectors             2;
+    nNonOrthogonalCorrectors 0;
 
     pRefCell                  0;
     pRefValue                 0;
@@ -520,7 +666,87 @@ boundaryField
 };
 "#;
 
-// --- Tests ---------------------------------------------------------------
+// Initial + boundary-condition field nut (SpalartAllmaras working variable).
+// Required by the RAS momentumTransport model even when turbulence is off.
+const FIELD_NUT: &str = r#"/* Fluidcraft default nut */
+FoamFile {
+    version     2.0;
+    format      ascii;
+    class       volScalarField;
+    object      nut;
+}
+
+dimensions      [0 2 -1 0 0 0 0];
+
+internalField   uniform 0;
+
+boundaryField
+{
+    inlet
+    {
+        type            zeroGradient;
+    }
+    outlet
+    {
+        type            zeroGradient;
+    }
+    lowerWall
+    {
+        type            zeroGradient;
+    }
+    upperWall
+    {
+        type            zeroGradient;
+    }
+    sideWalls
+    {
+        type            zeroGradient;
+    }
+};
+"#;
+
+// Initial + boundary-condition field nuTilda (SpalartAllmaras transport var).
+// Required alongside nut by the RAS momentumTransport model.
+const FIELD_NUTTILDA: &str = r#"/* Fluidcraft default nuTilda */
+FoamFile {
+    version     2.0;
+    format      ascii;
+    class       volScalarField;
+    object      nuTilda;
+}
+
+dimensions      [0 2 -1 0 0 0 0];
+
+internalField   uniform 0;
+
+boundaryField
+{
+    inlet
+    {
+        type            fixedValue;
+        value           uniform 1e-05;
+    }
+    outlet
+    {
+        type            zeroGradient;
+    }
+    lowerWall
+    {
+        type            fixedValue;
+        value           uniform 1e-05;
+    }
+    upperWall
+    {
+        type            fixedValue;
+        value           uniform 1e-05;
+    }
+    sideWalls
+    {
+        type            fixedValue;
+        value           uniform 1e-05;
+    }
+};
+"#;
 
 #[cfg(test)]
 mod tests {
