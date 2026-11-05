@@ -7,6 +7,8 @@ Fluidcraft orchestrates OpenFOAM's meshing and solving tools as subprocesses —
 no FFI. It targets a Linux-native, parallel, and GPU-capable workflow, with
 mesh creation as the core focus.
 
+Current operation is controller through CLI commands, GUI is WIP.
+
 > **Licensing.** All tools Fluidcraft uses are open source, public domain, or
 > used under fair use. Details in [licensing.md](licensing.md).
 
