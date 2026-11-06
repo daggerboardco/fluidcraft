@@ -84,14 +84,22 @@ used, copied, or ported):
 - Establish crate stack: `tokio`, `clap`, `serde`, `anyhow`, `thiserror`.
 - **Definition of done:** a Rust binary runs a minimal OpenFOAM case and prints residuals.
 
-### Phase 1 — Geometry Import (2–3 weeks) — *the risk*
-- Rust's CAD ecosystem is immature. Three realistic paths:
-  1. **OCC bindings** — `occt` crate (bindgen over OpenCASCADE) for true STEP/IGES/Parasolid in-Rust.
-  2. **Shell out** — call FreeCAD's `importPart` or Python `cadquery` as a geometry service (fastest to working).
-  3. **STL/OBJ first** — `stl` / `obj-rs` crates as a stopgap, add CAD later.
-- **Recommendation:** start with option 2 or 3 to de-risk; graduate to OCC bindings once the pipeline works.
-- Normalize imported geometry into a clean B-rep; add surface cleanup (small-face removal, gap/tolerance fixing).
-- **Definition of done:** import a STEP file and produce a clean, watertight surface in-Rust.
+### Phase 1 — Geometry Import (2–3 weeks) — *the risk* — **DONE**
+- Geometry path implemented via the **solidcore** kernel / **solidcraft** CLI
+  (`solidcraft-cli`), a Rust port of NVIDIA's SMLib B-rep kernel. Fluidcraft
+  shells out to it (no FFI) to convert STEP → normalized ASCII STL, with unit
+  scaling (`--scale`). See [`src/geometry.rs`](src/geometry.rs).
+- Licensing: Apache-2.0 (+ MIT components) with explicit tangency-labs
+  authorization; kept linked to upstream — see `licensing.md` and
+  `LICENSES/DEPENDENCIES.md`.
+- Longer-term: link the `solidcore` Rust crate directly once published/stable.
+- Rust's CAD ecosystem is otherwise immature. Two other paths remain on the
+  table for true CAD (STEP/IGES/Parasolid) in-Rust if needed later:
+  1. **OCC bindings** — `occt` crate (bindgen over OpenCASCADE).
+  2. **Shell out** — FreeCAD `importPart` or Python `cadquery` as a geometry service.
+  3. **STL/OBJ first** — `stl` / `obj-rs` crates as a stopgap.
+- **Definition of done:** import a STEP file and produce a clean, watertight
+  surface in-Rust. **Achieved** via the solidcraft CLI.
 
 ### Phase 2 — Meshing (3–4 weeks) — *core focus*
 - Orchestrate OpenFOAM CLIs from Rust:
@@ -102,18 +110,29 @@ used, copied, or ported):
 - Validate mesh output (element mix: polyhedral core + prism walls) against OpenFOAM's own tutorial cases.
 - **Definition of done:** produce a polyhedral + prism-layer mesh with y+ control, passing `checkMesh`.
 
-### Phase 3 — Solver Orchestration (2–3 weeks)
+### Phase 3 — Solver Orchestration (2–3 weeks) — **DONE**
 - Wrap OpenFOAM solvers (`simpleFoam`, `kSSTFoam`, etc.) as subprocesses.
 - Build case setup: boundary conditions, materials, turbulence models.
-- Parallel: `decomposePar` (metis) + `mpirun`/`mpmd` + `recombinePar` — standard MPI partitioning.
+- Parallel: `decomposePar` (metis) + `mpirun`/`mpmd` + `reconstructPar` — standard MPI partitioning.
   - Use the `mpi` crate for in-process MPI control if desired.
 - Job monitoring: parse `log.*`, residuals, y+, forces.
 - **Definition of done:** run a parallel OpenFOAM solve and report converged residuals + y+.
+- **Status:** transient PIMPLE solver integrated; acceptance gate passing
+  (mass imbalance ~-1.6e-11 m³/s, max Courant 0.0316, 0 NaN, single mesh
+  region). Parallel (`decomposePar` + `mpirun`) plumbing is the next step.
 
-### Phase 4 — GPU Backend (3–6 weeks) — *the hard part*
+### Phase 4 — GPU Backend (3–6 weeks) — *the hard part* — **IN PROGRESS**
 - Evaluate GPU-native solvers that read an OpenFOAM mesh; or OpenFOAM's experimental GPU solvers.
 - CUDA via `cuda-rs` / `rusta_cuda`, or wrap an existing GPU solver.
-- Keep the CPU path as the baseline; add GPU as an accelerator swap once CPU is solid.
+
+- **Toolchain installed (2026-11-06):** CUDA toolkit **13.4.3** (`/opt/cuda`,
+  `nvcc` on PATH). Verified on the NVIDIA RTX PRO 5000 72GB (Blackwell,
+  compute capability 12.0): `nvcc -arch=sm_120` compiles and runs a kernel.
+
+- **Key constraint:** the local OpenFOAM-14 build has **no GPU backend** —
+  Fluidcraft drives OpenFOAM's CPU machinery. GPU work is therefore a parallel
+  accelerator path, not a drop-in swap of the existing solver. CPU path stays
+  the baseline.
 - Benchmark speedup + accuracy vs CPU.
 - **Definition of done:** a GPU-accelerated run that matches CPU accuracy with measured speedup.
 
@@ -148,6 +167,7 @@ used, copied, or ported):
 | snappyHexMesh tuning complexity | Medium | Start from validated OF tutorial cases |
 | OpenFOAM version fragmentation | Medium | Pin a specific OpenFOAM build/distro |
 | Parallel decomposition quality | Medium | Use metis; validate with `decomposePar` quality metrics |
+| solidcore/solidcraft fork drift | Medium | Track `tangency-labs` upstream (`git fetch origin` + merge); don't orphan a fork |
 
 ---
 
@@ -168,4 +188,4 @@ or fair-use tools, and treats proprietary CFD products as inspiration only.
 
 ---
 
-_Last updated: 2026-11-02._
+_Last updated: 2026-11-06._

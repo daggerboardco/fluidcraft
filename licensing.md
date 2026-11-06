@@ -44,3 +44,24 @@ where legally sound.
 - Add a top-level `LICENSE` (MIT) for Fluidcraft's own code.
 - Before shipping, run a dependency-license audit (`cargo audit`, `cargo about`,
   or equivalent) and get a legal sign-off on the GPL (OpenFOAM) interaction.
+
+## solidcore / solidcraft — explicit authorization & obligations
+
+Fluidcraft's geometry import depends on the **solidcore** kernel and the
+**solidcraft** CLI app (a Rust port of NVIDIA's SMLib B-rep kernel), consumed as
+an external `solidcraft-cli` subprocess. These are covered by:
+
+1. **Permissive licenses** — solidcore/solidcraft are distributed under
+   **Apache-2.0** (with copyright held by NVIDIA Corporation & affiliates), plus
+   **MIT**-licensed components (e.g. `crates/ssi`). Fluidcraft complies with
+   their attribution/redistribution terms.
+2. **Explicit grant** — **tangency-labs** (the upstream maintainer of
+   `tangency-labs/solidcore` and `tangency-labs/solidcraft`) has granted
+   Fluidcraft explicit permission to use **any and all** of solidcore's and
+   solidcraft's work.
+
+**Stay-linked obligation (binding):** to avoid an orphaned fork, Fluidcraft
+keeps its local solidcore/solidcraft working copies current with the
+`tangency-labs` upstream (`git fetch origin` + merge `origin/main`). See
+`LICENSES/DEPENDENCIES.md` ("Upstream Sync"). An un-updated fork is a
+compliance risk and must be reconciled with upstream.

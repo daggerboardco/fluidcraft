@@ -8,7 +8,9 @@ no FFI. It targets a Linux-native, parallel, and GPU-capable workflow, with
 mesh creation as the core focus.
 
 > **Licensing.** All tools Fluidcraft uses are open source, public domain, or
-> used under fair use. Details in [licensing.md](licensing.md).
+> used under fair use. Details in [licensing.md](licensing.md); the dependency
+> license matrix (including solidcore/solidcraft) lives in
+> [LICENSES/DEPENDENCIES.md](LICENSES/DEPENDENCIES.md).
 
 ---
 
@@ -16,12 +18,14 @@ mesh creation as the core focus.
 
 - **OpenFOAM backend** — `blockMesh`, `snappyHexMesh`, solvers, and
   `decomposePar` invoked as subprocesses.
+- **Geometry import** — STEP → STL via the `solidcraft-cli` binary (the
+  solidcore B-rep kernel), run as a subprocess — no FFI.
 - **Case scaffolding** — generate a valid OpenFOAM case skeleton with
   `fluidcraft new`.
 - **CLI-driven** — `check`, `new`, `mesh`, `solve` subcommands.
-- **Rust throughout** — shell, geometry, orchestration, and (future) GPU backend.
+- **Rust throughout** — shell, geometry, orchestration, and GPU backend.
 - **Parallel-ready** — MPI domain decomposition via `decomposePar` (metis).
-- **GPU roadmap** — CPU baseline first, GPU acceleration later.
+- **GPU backend** — CUDA-accelerated compute in progress; CPU stays the baseline.
 
 ## Architecture
 
@@ -36,7 +40,7 @@ mesh creation as the core focus.
 │        │                    │                    │
 │        ▼                    ▼                    │
 │   geometry import    mesh + solve (blockMesh,   │
-│   (OCC / cadquery)    snappyHexMesh, solvers)   │
+│   (solidcraft CLI)    snappyHexMesh, solvers)   │
 └─────────────────────────────────────────────────┘
 ```
 
@@ -58,8 +62,7 @@ GPU backend a drop-in swap for the compute step.
 cargo build --release
 ```
 
-The binary is produced at `target/debug/fluidcraft` (debug) or
-`target/release/fluidcraft` (release).
+The binary is produced at `target/release/fluidcraft` (release).
 
 ## Usage
 
@@ -94,6 +97,9 @@ Fluidcraft/
 ├── Cargo.toml        # Phase 0 crate stack
 ├── roadmap.md        # Full project plan (phases, risks, licensing)
 ├── LICENSE           # MIT (Fluidcraft's own code)
+├── licensing.md      # Licensing & copyright-compliance rules
+├── LICENSES/         # Dependency license matrix (incl. solidcore/solidcraft)
+├── CHANGELOG.md      # Release history
 ├── src/
 │   ├── main.rs       # Entry point + tokio runtime
 │   ├── cli.rs        # clap CLI: check / new / mesh / solve
@@ -106,15 +112,15 @@ Fluidcraft/
 
 The full plan lives in [`roadmap.md`](roadmap.md). Summary of phases:
 
-| Phase | Title | Focus |
-|---|---|---|
-| 0 | Toolchain & Spike | Build baseline; `blockMesh` → solve → results |
-| 1 | Geometry Import | CAD/STEP import (OCC or cadquery) |
-| 2 | Meshing | `blockMesh` + `snappyHexMesh` orchestration |
-| 3 | Solver Orchestration | Parallel OpenFOAM solves |
-| 4 | GPU Backend | GPU-accelerated compute |
-| 5 | UI / 3D Rendering | `egui`/`iced` + `wgpu`/`bevy` |
-| 6 | Polish | Pre/post-processing, presets, docs |
+| Phase | Title | Focus | Status |
+|---|---|---|---|
+| 0 | Toolchain & Spike | Build baseline; `blockMesh` → solve → results | ✅ Done |
+| 1 | Geometry Import | STEP→STL via `solidcraft-cli` (solidcore) | ✅ Done |
+| 2 | Meshing | `blockMesh` + `snappyHexMesh` orchestration | ✅ Done |
+| 3 | Solver Orchestration | Parallel OpenFOAM solves | ✅ Done |
+| 4 | GPU Backend | CUDA-accelerated compute (in progress) | 🚧 In progress |
+| 5 | UI / 3D Rendering | `egui`/`iced` + `wgpu`/`bevy` | ⬜ Not started |
+| 6 | Polish | Pre/post-processing, presets, docs | ⬜ Not started |
 
 ## Contributing
 
