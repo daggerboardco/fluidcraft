@@ -269,7 +269,7 @@ async fn generate_geometry_dicts(
         ..Default::default()
     };
 
-    let block_mesh_dict = meshing::generate_block_mesh_dict(&bbox, margin);
+    let block_mesh_dict = meshing::generate_block_mesh_dict(&bbox, margin, config.base_cell_size);
     let snappy_dict = meshing::generate_snappy_hex_mesh_dict(&config, &stem, &surface_file);
 
     Ok((block_mesh_dict, snappy_dict))
@@ -535,7 +535,7 @@ startTime       0;
 
 stopAt          endTime;
 
-endTime         0.03;
+endTime         1.0;
 
 deltaT          0.0001;
 
@@ -543,7 +543,7 @@ writeControl    adjustableRunTime;
 
 writeInterval   0.001;
 
-purgeWrite      0;
+purgeWrite      20;
 
 writeFormat     ascii;
 
@@ -559,7 +559,7 @@ runTimeModifiable yes;
 
 adjustTimeStep  yes;
 
-maxCo           5;
+maxCo           1.0;
 "#;
 
 const DECOMPOSE_DICT: &str = r#"/* Fluidcraft default decomposeDict (metis) */
@@ -611,7 +611,7 @@ FoamFile {
 simulationType laminar;
 "#;
 
-// Steady-state laminar channel: fvSchemes (discretisation).
+// Transient laminar channel: fvSchemes (discretisation).
 const FV_SCHEMES: &str = r#"/* Fluidcraft default fvSchemes */
 FoamFile {
     version     2.0;
@@ -622,7 +622,7 @@ FoamFile {
 
 ddtSchemes
 {
-    default     steadyState;
+    default       Euler;
 };
 
 gradSchemes
@@ -659,7 +659,7 @@ fluxRequired
 };
 "#;
 
-// Steady-state laminar channel: fvSolution (SIMPLE + linear solvers).
+// Transient laminar channel: fvSolution (PIMPLE + linear solvers).
 const FV_SOLUTION: &str = r#"/* Fluidcraft default fvSolution (SIMPLE) */
 FoamFile {
     version     2.0;
@@ -699,20 +699,21 @@ solvers
     }
 };
 
-SIMPLE
+PIMPLE
 {
-    nCorrectors             2;
-    nNonOrthogonalCorrectors 0;
+    momentumPredictor no;
+    nNonOrthogonalCorrectors 2;
+    nOuterCorrectors 2;
+    nCorrectors 2;
+}
 
-    pRefCell                  0;
-    pRefValue                 0;
-
-    residualControl
+relaxationFactors
+{
+    equations
     {
-        p                     1e-3;
-        U                     1e-3;
+        ".*"  1;
     }
-};
+}
 "#;
 
 // Initial + boundary-condition field U (laminar inflow, no-slip walls).

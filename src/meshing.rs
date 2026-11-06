@@ -40,6 +40,10 @@ pub struct MeshingConfig {
     pub geometry: BoundingBox,
     /// Extra margin added around the geometry when sizing the blockMesh box.
     pub box_margin: f64,
+    /// Target edge length of the blockMesh background mesh. snappyHexMesh needs a
+    /// fine enough base to resolve the imported surface; too coarse a base (e.g.
+    /// 1 cell) leaves the surface unresolved and drops its wall patch.
+    pub base_cell_size: f64,
     /// Refinement level applied to cells intersecting the surface.
     pub surface_level: [u32; 2],
     /// Refinement level for cells inside the solid region.
@@ -66,7 +70,8 @@ impl Default for MeshingConfig {
                 max: [1.0, 1.0, 1.0],
             },
             box_margin: 0.0,
-            surface_level: [1, 2],
+            base_cell_size: 0.004,
+            surface_level: [2, 3],
             inside_level: 0,
             max_global_cells: 500_000,
             max_local_cells: 100_000,
@@ -82,7 +87,7 @@ impl Default for MeshingConfig {
 /// on every side. The box has the six named boundary patches (`inlet`,
 /// `outlet`, `lowerWall`, `upperWall`, `sideWalls`) used by the Fluidcraft
 /// baseline fields, so generated cases stay consistent with `U`/`p`.
-pub fn generate_block_mesh_dict(bbox: &BoundingBox, margin: f64) -> String {
+pub fn generate_block_mesh_dict(bbox: &BoundingBox, margin: f64, base_cell_size: f64) -> String {
     let min = [
         bbox.min[0] - margin,
         bbox.min[1] - margin,
@@ -93,6 +98,13 @@ pub fn generate_block_mesh_dict(bbox: &BoundingBox, margin: f64) -> String {
         bbox.max[1] + margin,
         bbox.max[2] + margin,
     ];
+
+    // Size the background mesh from a target cell size so snappyHexMesh has a
+    // fine enough base to resolve the imported surface. At least 3 cells per
+    // direction keeps the hex topology valid.
+    let extent = [max[0] - min[0], max[1] - min[1], max[2] - min[2]];
+    let divisions = |e: f64| ((e / base_cell_size).round() as i32).max(3);
+    let (nx, ny, nz) = (divisions(extent[0]), divisions(extent[1]), divisions(extent[2]));
 
     // 8 corner vertices in the standard OpenFOAM hex ordering, so the boundary
     // patch faces below line up with the baseline BCs:
@@ -121,7 +133,9 @@ pub fn generate_block_mesh_dict(bbox: &BoundingBox, margin: f64) -> String {
     s.push_str(");\n\n");
 
     s.push_str("blocks\n(\n");
-    s.push_str("    hex (0 1 2 3 4 5 6 7) (1 1 1) simpleGrading (1 1 1)\n");
+    s.push_str(&format!(
+        "    hex (0 1 2 3 4 5 6 7) ({nx} {ny} {nz}) simpleGrading (1 1 1)\n"
+    ));
     s.push_str(");\n\n");
 
     s.push_str("edges\n(\n);\n\n");
@@ -143,17 +157,10 @@ pub fn generate_block_mesh_dict(bbox: &BoundingBox, margin: f64) -> String {
 ///
 /// `surface_name` and `surface_file` must match the entry written into the case
 /// `constant/geometry/` directory. The generated dict includes every keyword
-/// the integration spike proved necessary (inside/outside points, refinement
+/// the integration spike proved necessary (an inside point, refinement
 /// surfaces/regions, and a complete `meshQualityControls` block).
 pub fn generate_snappy_hex_mesh_dict(config: &MeshingConfig, surface_name: &str, surface_file: &str) -> String {
     let center = config.geometry.center();
-    let margin = config.box_margin;
-    // A point clearly outside the blockMesh box, on the +x/+y/+z corner.
-    let outside = [
-        config.geometry.max[0] + margin + 1.0,
-        config.geometry.max[1] + margin + 1.0,
-        config.geometry.max[2] + margin + 1.0,
-    ];
 
     let mut s = String::new();
     s.push_str(&foam_file_header("snappyHexMeshDict"));
@@ -186,12 +193,8 @@ pub fn generate_snappy_hex_mesh_dict(config: &MeshingConfig, surface_name: &str,
         "    insidePoint ({:.9e} {:.9e} {:.9e});\n",
         center[0], center[1], center[2]
     ));
-    s.push_str(&format!(
-        "    outsidePoint ({:.9e} {:.9e} {:.9e});\n",
-        outside[0], outside[1], outside[2]
-    ));
     s.push_str("    allowFreeStandingZoneFaces true;\n");
-    s.push_str("    resolveFeatureAngle 30;\n\n");
+    s.push_str("    resolveFeatureAngle 180;\n\n");
 
     s.push_str("    refinementSurfaces\n    {\n");
     s.push_str(&format!(
@@ -307,7 +310,7 @@ mod tests {
 
     #[test]
     fn block_mesh_dict_has_all_five_patches() {
-        let dict = generate_block_mesh_dict(&washer_bbox(), 0.01);
+        let dict = generate_block_mesh_dict(&washer_bbox(), 0.01, 0.01);
         for patch in ["inlet", "outlet", "lowerWall", "upperWall", "sideWalls"] {
             assert!(dict.contains(patch), "missing patch {patch}");
         }
@@ -321,7 +324,7 @@ mod tests {
 
     #[test]
     fn block_mesh_box_encloses_geometry() {
-        let dict = generate_block_mesh_dict(&washer_bbox(), 0.01);
+        let dict = generate_block_mesh_dict(&washer_bbox(), 0.01, 0.01);
         // Box should extend past the geometry min/max by the margin (0.01),
         // rendered in 9-decimal scientific notation.
         assert!(dict.contains("-3.000000000e-2"), "box should extend below -0.02");
@@ -342,8 +345,11 @@ mod tests {
         assert!(dict.contains("refinementSurfaces"));
         assert!(dict.contains("patchInfo"));
         assert!(dict.contains("insidePoint"));
-        assert!(dict.contains("outsidePoint"));
+        // outsidePoint was removed: the generator no longer drives cell removal
+        // via an outside point; only the inside point seeds refinement.
+        assert!(!dict.contains("outsidePoint"));
         assert!(dict.contains("allowFreeStandingZoneFaces"));
+        assert!(dict.contains("resolveFeatureAngle 180"));
         // Full meshQualityControls proven set.
         for key in [
             "minVol", "minTetQuality", "maxConcave", "maxInternalSkewness",
