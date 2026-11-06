@@ -104,7 +104,11 @@ pub fn generate_block_mesh_dict(bbox: &BoundingBox, margin: f64, base_cell_size:
     // direction keeps the hex topology valid.
     let extent = [max[0] - min[0], max[1] - min[1], max[2] - min[2]];
     let divisions = |e: f64| ((e / base_cell_size).round() as i32).max(3);
-    let (nx, ny, nz) = (divisions(extent[0]), divisions(extent[1]), divisions(extent[2]));
+    let (nx, ny, nz) = (
+        divisions(extent[0]),
+        divisions(extent[1]),
+        divisions(extent[2]),
+    );
 
     // 8 corner vertices in the standard OpenFOAM hex ordering, so the boundary
     // patch faces below line up with the baseline BCs:
@@ -159,7 +163,11 @@ pub fn generate_block_mesh_dict(bbox: &BoundingBox, margin: f64, base_cell_size:
 /// `constant/geometry/` directory. The generated dict includes every keyword
 /// the integration spike proved necessary (an inside point, refinement
 /// surfaces/regions, and a complete `meshQualityControls` block).
-pub fn generate_snappy_hex_mesh_dict(config: &MeshingConfig, surface_name: &str, surface_file: &str) -> String {
+pub fn generate_snappy_hex_mesh_dict(
+    config: &MeshingConfig,
+    surface_name: &str,
+    surface_file: &str,
+) -> String {
     let center = config.geometry.center();
 
     let mut s = String::new();
@@ -168,7 +176,10 @@ pub fn generate_snappy_hex_mesh_dict(config: &MeshingConfig, surface_name: &str,
 
     s.push_str("castellatedMesh on;\n");
     s.push_str("snap            on;\n");
-    s.push_str(&format!("addLayers       {};\n\n", bool_word(config.add_layers)));
+    s.push_str(&format!(
+        "addLayers       {};\n\n",
+        bool_word(config.add_layers)
+    ));
 
     // Geometry section: the imported triSurface plus an inside refinement region.
     s.push_str("geometry\n{\n");
@@ -186,7 +197,10 @@ pub fn generate_snappy_hex_mesh_dict(config: &MeshingConfig, surface_name: &str,
     // Castellated mesh controls.
     s.push_str("castellatedMeshControls\n{\n");
     s.push_str(&format!("    maxLocalCells {};\n", config.max_local_cells));
-    s.push_str(&format!("    maxGlobalCells {};\n", config.max_global_cells));
+    s.push_str(&format!(
+        "    maxGlobalCells {};\n",
+        config.max_global_cells
+    ));
     s.push_str("    minRefinementCells 10;\n");
     s.push_str("    nCellsBetweenLevels 3;\n");
     s.push_str(&format!(
@@ -232,12 +246,7 @@ pub fn generate_snappy_hex_mesh_dict(config: &MeshingConfig, surface_name: &str,
     // calls subDict("layers") unconditionally, so this must exist or it throws.
     if config.add_layers {
         s.push_str("    layers\n    {\n");
-        for patch in [
-            "lowerWall",
-            "upperWall",
-            "sideWalls",
-            surface_name,
-        ] {
+        for patch in ["lowerWall", "upperWall", "sideWalls", surface_name] {
             s.push_str(&format!(
                 "        {patch}\n        {{\n            nSurfaceLayers {count};\n        }}\n",
                 count = config.layer_count
@@ -245,8 +254,14 @@ pub fn generate_snappy_hex_mesh_dict(config: &MeshingConfig, surface_name: &str,
         }
         s.push_str("    }\n\n");
     }
-    s.push_str(&format!("    expansionRatio {:.6};\n", config.layer_expansion_ratio));
-    s.push_str(&format!("    finalLayerThickness {:.6};\n", config.layer_final_thickness));
+    s.push_str(&format!(
+        "    expansionRatio {:.6};\n",
+        config.layer_expansion_ratio
+    ));
+    s.push_str(&format!(
+        "    finalLayerThickness {:.6};\n",
+        config.layer_final_thickness
+    ));
     s.push_str("    minThickness 1e-3;\n");
     s.push_str("    nGrow 0;\n");
     s.push_str("    featureAngle 100;\n");
@@ -327,8 +342,14 @@ mod tests {
         let dict = generate_block_mesh_dict(&washer_bbox(), 0.01, 0.01);
         // Box should extend past the geometry min/max by the margin (0.01),
         // rendered in 9-decimal scientific notation.
-        assert!(dict.contains("-3.000000000e-2"), "box should extend below -0.02");
-        assert!(dict.contains("3.000000000e-2"), "box should extend above 0.02");
+        assert!(
+            dict.contains("-3.000000000e-2"),
+            "box should extend below -0.02"
+        );
+        assert!(
+            dict.contains("3.000000000e-2"),
+            "box should extend above 0.02"
+        );
     }
 
     #[test]
@@ -352,9 +373,17 @@ mod tests {
         assert!(dict.contains("resolveFeatureAngle 180"));
         // Full meshQualityControls proven set.
         for key in [
-            "minVol", "minTetQuality", "maxConcave", "maxInternalSkewness",
-            "maxBoundarySkewness", "minFaceWeight", "minVolRatio", "minTwist",
-            "minDeterminant", "errorReduction", "nSmoothScale",
+            "minVol",
+            "minTetQuality",
+            "maxConcave",
+            "maxInternalSkewness",
+            "maxBoundarySkewness",
+            "minFaceWeight",
+            "minVolRatio",
+            "minTwist",
+            "minDeterminant",
+            "errorReduction",
+            "nSmoothScale",
         ] {
             assert!(dict.contains(key), "missing meshQualityControls key {key}");
         }

@@ -136,7 +136,11 @@ async fn new(
             };
             let geometry_path = profile.input.display().to_string();
             of::create_case_with_geometry(&path, overwrite, Some(profile)).await?;
-            println!("Created OpenFOAM case with geometry {} at {}", geometry_path, path.display());
+            println!(
+                "Created OpenFOAM case with geometry {} at {}",
+                geometry_path,
+                path.display()
+            );
         }
         None => {
             of::create_case(&path, overwrite).await?;

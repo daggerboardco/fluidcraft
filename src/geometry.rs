@@ -70,8 +70,8 @@ impl StlMesh {
 /// - Standard binary STL (80-byte header + u32 count + triangles)
 /// - solidcraft's hybrid: 80-byte text header + binary STL body
 pub fn read_stl(path: &Path) -> Result<StlMesh> {
-    let bytes = std::fs::read(path)
-        .with_context(|| format!("reading STL file {}", path.display()))?;
+    let bytes =
+        std::fs::read(path).with_context(|| format!("reading STL file {}", path.display()))?;
 
     // ASCII STL is text: identify it by the `facet` keyword, which appears right
     // after the optional `solid` header. Binary bodies (including solidcraft's
@@ -100,8 +100,7 @@ fn parse_stl_f32(tok: &str) -> Result<f32> {
 }
 
 fn read_stl_ascii(bytes: &[u8]) -> Result<StlMesh> {
-    let text = String::from_utf8(bytes.to_vec())
-        .context("ASCII STL is not valid UTF-8")?;
+    let text = String::from_utf8(bytes.to_vec()).context("ASCII STL is not valid UTF-8")?;
     let mut mesh = StlMesh::default();
     let mut i = 0;
     let tokens: Vec<&str> = text.split_whitespace().collect();
@@ -116,10 +115,10 @@ fn read_stl_ascii(bytes: &[u8]) -> Result<StlMesh> {
             let mut normal = [0.0f32; 3];
             let mut verts = Vec::new();
             i += 1; // "facet"
-            // ASCII STL is `facet normal nx ny nz`: skip the literal "normal"
-            // keyword before its three components. Reading the keyword as a
-            // component silently zeroed every normal and dropped a coordinate
-            // (audit 2026-11-05).
+                    // ASCII STL is `facet normal nx ny nz`: skip the literal "normal"
+                    // keyword before its three components. Reading the keyword as a
+                    // component silently zeroed every normal and dropped a coordinate
+                    // (audit 2026-11-05).
             if i >= tokens.len() || tokens[i] != "normal" {
                 return Err(anyhow::anyhow!(
                     "malformed ASCII STL: facet missing 'normal' keyword"
@@ -131,9 +130,9 @@ fn read_stl_ascii(bytes: &[u8]) -> Result<StlMesh> {
                     "malformed ASCII STL: facet with no normal components"
                 ));
             }
-            normal[0] = parse_stl_f32(&tokens[i])?;
-            normal[1] = parse_stl_f32(&tokens[i + 1])?;
-            normal[2] = parse_stl_f32(&tokens[i + 2])?;
+            normal[0] = parse_stl_f32(tokens[i])?;
+            normal[1] = parse_stl_f32(tokens[i + 1])?;
+            normal[2] = parse_stl_f32(tokens[i + 2])?;
             i += 3;
             // skip "outer" "loop"
             while i < tokens.len() && tokens[i] != "vertex" {
@@ -149,15 +148,17 @@ fn read_stl_ascii(bytes: &[u8]) -> Result<StlMesh> {
                     ));
                 }
                 let v = [
-                    parse_stl_f32(&tokens[i + 1])?,
-                    parse_stl_f32(&tokens[i + 2])?,
-                    parse_stl_f32(&tokens[i + 3])?,
+                    parse_stl_f32(tokens[i + 1])?,
+                    parse_stl_f32(tokens[i + 2])?,
+                    parse_stl_f32(tokens[i + 3])?,
                 ];
                 verts.push(v);
                 i += 4;
             }
             if verts.len() < 3 {
-                return Err(anyhow::anyhow!("malformed ASCII STL: facet needs 3 vertices"));
+                return Err(anyhow::anyhow!(
+                    "malformed ASCII STL: facet needs 3 vertices"
+                ));
             }
             mesh.triangles.push(StlTriangle {
                 normal,
@@ -181,19 +182,17 @@ fn read_stl_binary(bytes: &[u8]) -> Result<StlMesh> {
     let mut off = 84;
     for _ in 0..n {
         if off + 50 > bytes.len() {
-            return Err(anyhow::anyhow!("binary STL truncated ({} triangles declared)", n));
+            return Err(anyhow::anyhow!(
+                "binary STL truncated ({} triangles declared)",
+                n
+            ));
         }
         let f32_at = |o: usize| f32::from_le_bytes(bytes[o..o + 4].try_into().unwrap());
         let normal = [f32_at(off), f32_at(off + 4), f32_at(off + 8)];
         let v0 = [f32_at(off + 12), f32_at(off + 16), f32_at(off + 20)];
         let v1 = [f32_at(off + 24), f32_at(off + 28), f32_at(off + 32)];
         let v2 = [f32_at(off + 36), f32_at(off + 40), f32_at(off + 44)];
-        mesh.triangles.push(StlTriangle {
-            normal,
-            v0,
-            v1,
-            v2,
-        });
+        mesh.triangles.push(StlTriangle { normal, v0, v1, v2 });
         off += 50; // 12-byte normal + 36-byte vertices + 2-byte attribute
     }
     Ok(mesh)
@@ -206,7 +205,11 @@ pub fn write_stl_ascii(path: &Path, mesh: &StlMesh, scale: f32) -> Result<()> {
     out.push_str("solid fluidcraft\n");
     for t in &mesh.triangles {
         let n = if scale != 0.0 {
-            [t.normal[0] * scale, t.normal[1] * scale, t.normal[2] * scale]
+            [
+                t.normal[0] * scale,
+                t.normal[1] * scale,
+                t.normal[2] * scale,
+            ]
         } else {
             t.normal
         };
@@ -229,8 +232,7 @@ pub fn write_stl_ascii(path: &Path, mesh: &StlMesh, scale: f32) -> Result<()> {
         out.push_str("  endloop\nendfacet\n");
     }
     out.push_str("endsolid fluidcraft\n");
-    std::fs::write(path, out)
-        .with_context(|| format!("writing STL file {}", path.display()))?;
+    std::fs::write(path, out).with_context(|| format!("writing STL file {}", path.display()))?;
     Ok(())
 }
 
@@ -275,12 +277,7 @@ pub fn locate_solidcraft(explicit: Option<&Path>) -> Result<PathBuf> {
 /// `scale` normalizes units (1.0 = leave as-is; 0.001 = mm->m). `output` is the
 /// final normalized STL. A temporary STL is produced by solidcraft and then
 /// normalized to ASCII in `output`.
-pub fn step_to_stl(
-    input: &Path,
-    output: &Path,
-    solidcraft_bin: &Path,
-    scale: f32,
-) -> Result<()> {
+pub fn step_to_stl(input: &Path, output: &Path, solidcraft_bin: &Path, scale: f32) -> Result<()> {
     if !input.exists() {
         return Err(FluidcraftError::Geometry(format!(
             "input STEP file not found: {}",
@@ -292,8 +289,7 @@ pub fn step_to_stl(
         .parent()
         .filter(|p| !p.as_os_str().is_empty())
         .unwrap_or(Path::new("."));
-    std::fs::create_dir_all(parent)
-        .with_context(|| format!("creating {}", parent.display()))?;
+    std::fs::create_dir_all(parent).with_context(|| format!("creating {}", parent.display()))?;
 
     // solidcraft writes its own STL next to the requested output; read that back
     // and normalize into `output`.
@@ -369,7 +365,12 @@ mod tests {
             v.extend_from_slice(&0u16.to_le_bytes());
             v
         };
-        bytes.extend_from_slice(&tri([0.0, 0.0, 1.0], [0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]));
+        bytes.extend_from_slice(&tri(
+            [0.0, 0.0, 1.0],
+            [0.0, 0.0, 0.0],
+            [1.0, 0.0, 0.0],
+            [0.0, 1.0, 0.0],
+        ));
         let mesh = read_stl_binary(&bytes).unwrap();
         assert_eq!(mesh.triangles.len(), 1);
         assert_eq!(mesh.triangles[0].v2, [0.0, 1.0, 0.0]);
