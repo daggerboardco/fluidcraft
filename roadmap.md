@@ -77,14 +77,14 @@ used, copied, or ported):
 
 ## 3. Phased Roadmap
 
-### Phase 0 — Toolchain & Spike (1 week)
+### Phase 0 — Toolchain & Spike (1 week) ✅ COMPLETED
 - Install OpenFOAM (distro build or ESI `openfoam` / `distro-clean`) + ParaView.
 - Initialize the Cargo project at `/mnt/970EVO/Projects/Fluidcraft`.
 - **Spike:** spawn `blockMesh` → run a solver → parse results end-to-end.
 - Establish crate stack: `tokio`, `clap`, `serde`, `anyhow`, `thiserror`.
 - **Definition of done:** a Rust binary runs a minimal OpenFOAM case and prints residuals.
 
-### Phase 1 — Geometry Import (2–3 weeks) — *the risk*
+### Phase 1 — Geometry Import (2–3 weeks) — *the risk* ✅ COMPLETED
 - Rust's CAD ecosystem is immature. Three realistic paths:
   1. **OCC bindings** — `occt` crate (bindgen over OpenCASCADE) for true STEP/IGES/Parasolid in-Rust.
   2. **Shell out** — call FreeCAD's `importPart` or Python `cadquery` as a geometry service (fastest to working).
@@ -93,7 +93,7 @@ used, copied, or ported):
 - Normalize imported geometry into a clean B-rep; add surface cleanup (small-face removal, gap/tolerance fixing).
 - **Definition of done:** import a STEP file and produce a clean, watertight surface in-Rust.
 
-### Phase 2 — Meshing (3–4 weeks) — *core focus*
+### Phase 2 — Meshing (3–4 weeks) — *core focus* ✅ COMPLETED
 - Orchestrate OpenFOAM CLIs from Rust:
   - `blockMesh` for hex cores / simple domains.
   - `snappyHexMesh` for the standard recipe: **snap → smooth → add prism layers → y+ control**.
@@ -102,7 +102,7 @@ used, copied, or ported):
 - Validate mesh output (element mix: polyhedral core + prism walls) against OpenFOAM's own tutorial cases.
 - **Definition of done:** produce a polyhedral + prism-layer mesh with y+ control, passing `checkMesh`.
 
-### Phase 3 — Solver Orchestration (2–3 weeks)
+### Phase 3 — Solver Orchestration (2–3 weeks) ✅ COMPLETED
 - Wrap OpenFOAM solvers (`simpleFoam`, `kSSTFoam`, etc.) as subprocesses.
 - Build case setup: boundary conditions, materials, turbulence models.
 - Parallel: `decomposePar` (metis) + `mpirun`/`mpmd` + `recombinePar` — standard MPI partitioning.
@@ -110,7 +110,7 @@ used, copied, or ported):
 - Job monitoring: parse `log.*`, residuals, y+, forces.
 - **Definition of done:** run a parallel OpenFOAM solve and report converged residuals + y+.
 
-### Phase 4 — GPU Backend (3–6 weeks) — *the hard part*
+### Phase 4 — GPU Backend (3–6 weeks) — *the hard part* ❗IN-PROGRESS
 - Evaluate GPU-native solvers that read an OpenFOAM mesh; or OpenFOAM's experimental GPU solvers.
 - CUDA via `cuda-rs` / `rusta_cuda`, or wrap an existing GPU solver.
 - Keep the CPU path as the baseline; add GPU as an accelerator swap once CPU is solid.
