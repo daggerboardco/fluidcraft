@@ -26,6 +26,7 @@ mesh creation as the core focus.
 - **Rust throughout** — shell, geometry, orchestration, and GPU backend.
 - **Parallel-ready** — MPI domain decomposition via `decomposePar` (metis).
 - **GPU backend** — CUDA-accelerated compute in progress; CPU stays the baseline.
+- **GUI Support** — Current operation is controlled through CLI commands, GUI is WIP.
 
 ## Architecture
 

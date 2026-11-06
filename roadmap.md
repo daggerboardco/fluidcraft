@@ -77,14 +77,14 @@ used, copied, or ported):
 
 ## 3. Phased Roadmap
 
-### Phase 0 — Toolchain & Spike (1 week)
+### Phase 0 — Toolchain & Spike (1 week) ✅ COMPLETED
 - Install OpenFOAM (distro build or ESI `openfoam` / `distro-clean`) + ParaView.
 - Initialize the Cargo project at `/mnt/970EVO/Projects/Fluidcraft`.
 - **Spike:** spawn `blockMesh` → run a solver → parse results end-to-end.
 - Establish crate stack: `tokio`, `clap`, `serde`, `anyhow`, `thiserror`.
 - **Definition of done:** a Rust binary runs a minimal OpenFOAM case and prints residuals.
 
-### Phase 1 — Geometry Import (2–3 weeks) — *the risk* — **DONE**
+### Phase 1 — Geometry Import (2–3 weeks) — *the risk* ✅ COMPLETED
 - Geometry path implemented via the **solidcore** kernel / **solidcraft** CLI
   (`solidcraft-cli`), a Rust port of NVIDIA's SMLib B-rep kernel. Fluidcraft
   shells out to it (no FFI) to convert STEP → normalized ASCII STL, with unit
@@ -101,7 +101,7 @@ used, copied, or ported):
 - **Definition of done:** import a STEP file and produce a clean, watertight
   surface in-Rust. **Achieved** via the solidcraft CLI.
 
-### Phase 2 — Meshing (3–4 weeks) — *core focus*
+### Phase 2 — Meshing (3–4 weeks) — *core focus* ✅ COMPLETED
 - Orchestrate OpenFOAM CLIs from Rust:
   - `blockMesh` for hex cores / simple domains.
   - `snappyHexMesh` for the standard recipe: **snap → smooth → add prism layers → y+ control**.
@@ -110,7 +110,7 @@ used, copied, or ported):
 - Validate mesh output (element mix: polyhedral core + prism walls) against OpenFOAM's own tutorial cases.
 - **Definition of done:** produce a polyhedral + prism-layer mesh with y+ control, passing `checkMesh`.
 
-### Phase 3 — Solver Orchestration (2–3 weeks) — **DONE**
+### Phase 3 — Solver Orchestration (2–3 weeks) ✅ COMPLETED
 - Wrap OpenFOAM solvers (`simpleFoam`, `kSSTFoam`, etc.) as subprocesses.
 - Build case setup: boundary conditions, materials, turbulence models.
 - Parallel: `decomposePar` (metis) + `mpirun`/`mpmd` + `reconstructPar` — standard MPI partitioning.
@@ -121,7 +121,7 @@ used, copied, or ported):
   (mass imbalance ~-1.6e-11 m³/s, max Courant 0.0316, 0 NaN, single mesh
   region). Parallel (`decomposePar` + `mpirun`) plumbing is the next step.
 
-### Phase 4 — GPU Backend (3–6 weeks) — *the hard part* — **IN PROGRESS**
+### Phase 4 — GPU Backend (3–6 weeks) — *the hard part* ❗IN-PROGRESS
 - Evaluate GPU-native solvers that read an OpenFOAM mesh; or OpenFOAM's experimental GPU solvers.
 - CUDA via `cuda-rs` / `rusta_cuda`, or wrap an existing GPU solver.
 
