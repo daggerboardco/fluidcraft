@@ -189,7 +189,11 @@ async fn write_files(case: &Path, geometry: Option<&GeometryProfile>) -> Result<
     // snappy generator creates a wall patch for the imported triSurface, so the
     // fields must define a matching BC for that patch (audit 2026-11-05).
     let stem = geometry
-        .and_then(|g| g.input.file_stem().map(|s| s.to_string_lossy().into_owned()))
+        .and_then(|g| {
+            g.input
+                .file_stem()
+                .map(|s| s.to_string_lossy().into_owned())
+        })
         .unwrap_or_else(|| "part".to_string());
     let has_geometry = geometry.is_some();
 
@@ -209,7 +213,10 @@ async fn write_files(case: &Path, geometry: Option<&GeometryProfile>) -> Result<
         FIELD_NUT.to_string()
     };
     let nu_tilda = if has_geometry {
-        with_surface_bc(FIELD_NUTTILDA, &surface_wall_bc(&stem, "fixedValue", Some("uniform 1e-05")))
+        with_surface_bc(
+            FIELD_NUTTILDA,
+            &surface_wall_bc(&stem, "fixedValue", Some("uniform 1e-05")),
+        )
     } else {
         FIELD_NUTTILDA.to_string()
     };
